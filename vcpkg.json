@@ -1,0 +1,12 @@
+﻿{
+  "name": "computer-vision-utility",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {
+      "name": "opencv4",
+      "features": ["ffmpeg"]
+    },
+    "fmt",
+    "cli11"
+  ]
+}

@@ -1,0 +1,77 @@
+# Build directories
+build*/
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+cmake_export.cmake
+CMakePresets.json
+CMakeUserPresets.json
+
+# Ninja files
+build-ninja-*/
+*.ninja
+*.ninja_log
+
+# Visual Studio files
+*.sln
+*.vcxproj*
+*.user
+*.opensdf
+*.sdf
+
+# Intermediate and object files
+*.obj
+*.o
+*.lo
+*.la
+*.al
+
+# Executables and libraries
+*.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+
+# IDE and editor settings
+.vscode/
+*.code-workspace
+
+# GitHub workflows/config
+.github/
+
+# asset files (not source code)
+assets/
+
+# Logs and temporary files
+*.log
+*.tmp
+*~
+
+# vcpkg artifacts
+/vcpkg_installed/
+/vcpkg/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage and test results
+coverage/
+*.gcda
+*.gcno
+
+# Generated source
+*.generated.cpp
+
+# Other
+*.user
+*.swp
+*.bak
