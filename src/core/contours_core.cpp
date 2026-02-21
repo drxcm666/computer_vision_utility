@@ -32,7 +32,8 @@ cvtool::core::ExitCode find_contours_report(
     }
     if (bin.depth() != CV_8U)
     {
-        err = fmt::format("Input image must be of type CV_8U: {}", bin.depth());
+        err = fmt::format("error: input image must be CV_8UC1 (got type={} channels={} depth={})",
+                  bin.type(), bin.channels(), bin.depth());
         return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
     }
 
@@ -48,10 +49,10 @@ cvtool::core::ExitCode find_contours_report(
         for (const auto &i : contours)
         {
             double area = cv::contourArea(i);
-            if (area > min_area)
+            if (area >= min_area)
             {
                 cv::Rect bbox = cv::boundingRect(i);
-                items.push_back({kept_id++, area, bbox});
+                items.push_back({kept_id++, area, bbox, i});
             }
         }
         

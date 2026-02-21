@@ -7,6 +7,7 @@
       "features": ["ffmpeg"]
     },
     "fmt",
-    "cli11"
+    "cli11",
+    "nlohmann-json"
   ]
 }

@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     contours->add_option("--block", copt.block, "Adaptive block (odd > 1)")->check(Validators::odd_ge_3);
     contours->add_option("--c", copt.c, "Adaptive C");
     contours->add_option("--t", copt.t, "Manual threshold 0..255")->check(CLI::Range(0, 255));
-    contours->add_option("--json", copt.json_path, "Optional JSON report path")->check(Validators::out_path_exist);
+    contours->add_option("--json-path", copt.json_path, "Optional JSON report path")->check(Validators::out_path_exist);
 
     cvtool::core::ExitCode rc{0};
 

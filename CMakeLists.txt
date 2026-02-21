@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc videoio)
 find_package(fmt CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -33,6 +34,7 @@ target_link_libraries(cvtool PRIVATE
     ${OpenCV_LIBS}
     fmt::fmt
     CLI11::CLI11
+    nlohmann_json::nlohmann_json
 )
 
 # Include directories

@@ -36,7 +36,7 @@ cvtool::core::ExitCode run_blur(const cvtool::cmd::BlurOptions &opt)
         try
         {
             cv::Mat out = img.clone();
-            cv::GaussianBlur(img, img, cv::Size(opt.blur_k, opt.blur_k), 0, 0);
+            cv::GaussianBlur(img, out, cv::Size(opt.blur_k, opt.blur_k), 0, 0);
         }
         catch (const cv::Exception &e)
         {

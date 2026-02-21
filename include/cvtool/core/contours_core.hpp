@@ -3,6 +3,8 @@
 #include "cvtool/core/exit_codes.hpp"
 
 #include <opencv2/core/mat.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/core/types.hpp>
 
 #include <string>
 #include <vector>
@@ -15,6 +17,7 @@ struct ContourItem
     int id{0};
     double area{0.0};
     cv::Rect bbox;
+    std::vector<cv::Point> contour;
 };
 
 struct ContourStats
