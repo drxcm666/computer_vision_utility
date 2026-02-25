@@ -1,0 +1,47 @@
+{
+  "version": 8,
+  "configurePresets": [
+    {
+      "name": "debug-ninja-mingw64-vcpkg",
+      "displayName": "Debug (Ninja, MinGW64, vcpkg-mingw64)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja-mingw64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+
+        "CMAKE_C_COMPILER": "<path-to-gcc>",
+        "CMAKE_CXX_COMPILER": "<path-to-g++>",
+        "CMAKE_MAKE_PROGRAM": "<path-to-ninja>",
+        "CMAKE_TOOLCHAIN_FILE": "<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-dynamic",
+        "VCPKG_HOST_TRIPLET": "x64-mingw-dynamic"
+      }
+    },
+    {
+      "name": "debug-ninja-ucrt64-vcpkg",
+      "displayName": "Debug (Ninja, UCRT64, vcpkg)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja-ucrt64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+
+        "CMAKE_C_COMPILER": "<path-to-gcc-ucrt64>",
+        "CMAKE_CXX_COMPILER": "<path-to-g++-ucrt64>",
+        "CMAKE_MAKE_PROGRAM": "<path-to-ninja-ucrt64>",
+        "CMAKE_TOOLCHAIN_FILE": "<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-dynamic",
+        "VCPKG_HOST_TRIPLET": "x64-mingw-dynamic"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug-mingw64",
+      "configurePreset": "debug-ninja-mingw64-vcpkg"
+    },
+    {
+      "name": "debug-ucrt64",
+      "configurePreset": "debug-ninja-ucrt64-vcpkg"
+    }
+  ]
+}

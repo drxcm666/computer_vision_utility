@@ -5,6 +5,7 @@
 #include "cvtool/commands/edges.hpp"
 #include "cvtool/commands/video_edges.hpp"
 #include "cvtool/commands/contours.hpp"
+#include "cvtool/commands/match.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -87,6 +88,7 @@ int main(int argc, char **argv)
     auto *video_edges = app.add_subcommand(
         "video-edges", "Detect edges in video frames");
     auto *contours = app.add_subcommand("contours", "Threshold + contour detection + bboxes");
+    auto *match = app.add_subcommand("match", "Temple matching (find pattern)");
 
     cvtool::cmd::InfoOptions inop;
     info->add_option("--in", inop.in_path, "Input file path")->required()->check(CLI::ExistingFile);
@@ -130,31 +132,46 @@ int main(int argc, char **argv)
     contours->add_option("--t", copt.t, "Manual threshold 0..255")->check(CLI::Range(0, 255));
     contours->add_option("--json-path", copt.json_path, "Optional JSON report path")->check(Validators::out_path_exist);
 
+    cvtool::cmd::MatchOptions mapt{};
+    match->add_option("--in", mapt.in_path, "Input image path")->required()->check(CLI::ExistingFile);
+    match->add_option("--out", mapt.out_path, "Output image path")->required()->check(Validators::out_path_exist);
+    match->add_option("--templ", mapt.templ_path, "Template image path")->required()->check(CLI::ExistingFile);
+    match->add_option("--min-score", mapt.min_score, "Minimal confidence [0...1]")->default_val(0.80);
+    match->add_option("--method", mapt.method, "Matching method: ccoeff_normed|ccorr_normed|sqdiff_normed")->default_val("ccoeff_normed");
+    match->add_option("--max-results", mapt.max_results, "How many matches to draw (>= 1)")->default_val("5");
+    match->add_option("--nms", mapt.nms, "NMS IoU threshold in [0..1] (0.30 default)")->default_val(0.30);
+    match->add_option("--mode", mapt.mode, "Match mode: gray|color")->default_val("gray");
+    match->add_option("--heatmap", mapt.heatmap_path, "Save heatmap image")->check(Validators::out_path_exist);
+    match->add_option("--json", mapt.json_path, "Save JSON report")->check(Validators::out_path_exist);
+    match->add_option("--roi", mapt.roi, "ROI: x, y, w, h");
+    match->add_option("--draw", mapt.draw, "Draw: bbox|bbox+label|bbox+label+score")->default_val("bbox+label+score");
+    match->add_option("--thickness", mapt.thickness, "BBox thickness (>=1)")->default_val(2);
+    match->add_option("--font-scale", mapt.font_scale, "Label font scale (>0)")->default_val(0.5);
+
+
     cvtool::core::ExitCode rc{0};
 
-    info->callback([&]
-                   { rc = run_info(inop); });
+    info->callback([&]{ rc = run_info(inop); });
 
-    gray->callback([&]
-                   { rc = run_gray(grop); });
+    gray->callback([&]{ rc = run_gray(grop); });
 
-    blur->callback([&]
-                   { rc = run_blur(blop); });
+    blur->callback([&]{ rc = run_blur(blop); });
 
-    edges->callback([&]
-                    {
-        if(edop.threshold_low > edop.threshold_high)
+    edges->callback([&]{
+        if(edop.threshold_low > edop.threshold_high) {
             throw CLI::ValidationError("--low", "must be < --high");
+        }
         rc = run_edges(edop); });
 
-    video_edges->callback([&]
-                          {
-        if(vept.low > vept.high)
+    video_edges->callback([&]{
+        if(vept.low > vept.high) {
             throw CLI::ValidationError("--low", "must be < --high");
+        }
         rc = run_video_edges(vept); });
 
-    contours->callback([&]
-                       { rc = run_contours(copt); });
+    contours->callback([&]{ rc = run_contours(copt); });
+
+    match->callback([&]{ rc = run_match(mapt); });
 
     try
     {

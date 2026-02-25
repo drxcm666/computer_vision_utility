@@ -21,12 +21,14 @@ add_executable(cvtool
     src/commands/edges.cpp
     src/commands/video_edges.cpp
     src/commands/contours.cpp
+    src/commands/match.cpp
     src/core/edges_pipeline.cpp
     src/core/validate.cpp
     src/core/image_io.cpp
     src/core/video_io.cpp
     src/core/threshold.cpp
     src/core/contours_core.cpp
+    src/core/template_match.cpp
 )
 
 # Link libraries

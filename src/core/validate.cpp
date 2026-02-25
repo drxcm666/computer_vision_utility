@@ -1,7 +1,10 @@
 #include "cvtool/core/validate.hpp"
 
+#include <opencv2/imgproc.hpp>
+
 #include <fmt/format.h>
 #include <algorithm>
+#include <charconv>
 
 namespace cvtool::core::validate
 {
@@ -138,6 +141,159 @@ cvtool::core::ExitCode validate_manual_t(int t, std::string &err)
     
     err = fmt::format("error: invalid --t (require 0..255): {}", t);
     return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+}
+
+cvtool::core::ExitCode validate_01(std::string_view name, double v, std::string &err)
+{
+    if (v < 0.0 || v > 1.0)
+    {
+        err = fmt::format("error: {} out of range [0...1]: {}", name, v);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    return cvtool::core::ExitCode::Ok;
+}
+
+cvtool::core::ExitCode  validate_max_results(int n, std::string &err)
+{
+    if (n < 1)
+    {
+        err = fmt::format("error: max-result must be >= 1: {}", n);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    return cvtool::core::ExitCode::Ok;
+}
+
+cvtool::core::ExitCode validate_mode_match(std::string_view mode, std::string &err)
+{
+    if (mode != "gray" && mode != "color")
+    {
+        err = fmt::format("error: invalid mode: {} (must be gray|color)", mode);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    return cvtool::core::ExitCode::Ok;
+}
+
+cvtool::core::ExitCode validate_method_match(std::string_view method_str, int &method_out, std::string &err)
+{
+    if (method_str == "ccoeff_normed")
+    {
+        method_out = cv::TM_CCOEFF_NORMED;
+        return cvtool::core::ExitCode::Ok;
+    }
+    if (method_str == "ccorr_normed")
+    {
+        method_out = cv::TM_CCORR_NORMED;
+        return cvtool::core::ExitCode::Ok;
+    }
+    if (method_str == "sqdiff_normed")
+    {
+        method_out = cv::TM_SQDIFF_NORMED;
+        return cvtool::core::ExitCode::Ok;
+    }
+
+    err = fmt::format("error: invalid method: {} (must be ccoeff_normed|ccorr_normed|sqdiff_normed)", method_str);
+    return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+}
+
+
+static std::string_view trim_view(std::string_view s) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.remove_prefix(1);
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))  s.remove_suffix(1);
+    return s;
+}
+
+cvtool::core::ExitCode validate_roi(std::string_view str, cv::Rect &out, std::string &err)
+{
+    std::array<std::string_view, 4> result;
+    std::size_t pos{0};
+    std::size_t found{0};
+    int i{0};
+
+    while ((found = str.find(',', pos)) != std::string_view::npos)
+    {
+        if (i >= 4) {
+            err = "error: too many values for ROI (expected 4: x,y,w,h)";
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+        }
+
+        result[i++] = str.substr(pos, found - pos);
+        pos = found + 1;
+    }
+    result[i] = str.substr(pos);
+
+    if (i != 3) 
+    { 
+        err = "error: roi must be 4 integers: x,y,w,h"; 
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    std::array<int, 4> numbers;
+    for (int i = 0; i < numbers.size(); i++)
+    {
+        auto tok = trim_view(result[i]);
+        if (tok.empty()) 
+        { 
+            err = "error: roi has empty value (expected x,y,w,h)"; 
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+        }
+
+        const char *b = tok.data();
+        const char *e = tok.data() + tok.size();
+        auto [ptr, ec] = std::from_chars(b, e, numbers[i]);
+        
+        if (ec != std::errc() || ptr != e)
+        {
+            err = "error: ROI coordinates must be valid numbers";
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+        }
+        
+    }
+
+    if (numbers[2] <= 0 || numbers[3] <= 0)
+    {
+        err = "error: roi width/height must be >0";
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+    
+    out = cv::Rect{numbers[0], numbers[1], numbers[2], numbers[3]};
+
+    return cvtool::core::ExitCode::Ok;
+}
+
+cvtool::core::ExitCode validate_draw_match(std::string_view draw, std::string &err)
+{
+    if (draw != "bbox" && draw != "bbox+label" && draw != "bbox+label+score")
+    {
+        err = fmt::format("error: invalid draw: {} (use bbox|bbox+label|bbox+label+score)", draw);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    return cvtool::core::ExitCode::Ok;
+}
+
+cvtool::core::ExitCode validate_thickness(int thickness, std::string &err)
+{
+    if (thickness < 1)
+    {
+        err = fmt::format("error: thickness must be >= 1: {}", thickness);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    return cvtool::core::ExitCode::Ok;
+}
+
+cvtool::core::ExitCode validate_font_scale(double fs, std::string &err)
+{
+    if (fs <= 0.0)
+    {
+        err = fmt::format("error: font-scale must be > 0: {}", fs);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    return cvtool::core::ExitCode::Ok;
 }
 
 }
