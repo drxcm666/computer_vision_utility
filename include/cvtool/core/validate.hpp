@@ -32,7 +32,7 @@ cvtool::core::ExitCode validate_manual_t(int t, std::string &err);
 
 cvtool::core::ExitCode validate_01(std::string_view name, double v, std::string &err);
 
-cvtool::core::ExitCode  validate_max_results(int n, std::string &err);
+cvtool::core::ExitCode validate_max_results(int n, std::string &err);
 
 cvtool::core::ExitCode validate_mode_match(std::string_view mode, std::string &err);
 
@@ -46,5 +46,8 @@ cvtool::core::ExitCode validate_thickness(int thickness, std::string &err);
 
 cvtool::core::ExitCode validate_font_scale(double fs, std::string &err);
 
+cvtool::core::ExitCode validate_scale_range(std::string_view str, double &min, double &max, double &step, std::string &err);
+
+cvtool::core::ExitCode validate_nonneg(std::string_view name, int v, std::string &err);
 
 }

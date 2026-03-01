@@ -12,6 +12,8 @@ struct MatchBest
     cv::Rect bbox;
     double raw_score{};
     double confidence{};
+    double scale{1.0};
+    cv::Size template_size{};
 };
 
 MatchBest match_best(const cv::Mat &scene, const cv::Mat &templ, int method);

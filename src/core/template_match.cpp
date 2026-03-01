@@ -42,7 +42,7 @@ MatchBest match_best(const cv::Mat &scene, const cv::Mat &templ, int method)
     cv::Rect bbox{loc.x, loc.y, templ.cols, templ.rows};
     const double conf = confidence_from_raw(method, raw);
 
-    return{bbox, raw, conf};
+    return{bbox, raw, conf, 1.0, templ.size()};
 }
 
 std::vector<MatchBest> match_topk(
@@ -62,7 +62,6 @@ std::vector<MatchBest> match_topk(
         *out_result = result;
     }
     
-
     cv::Mat work = result.clone();
     std::vector<MatchBest> hits;
 
@@ -83,7 +82,7 @@ std::vector<MatchBest> match_topk(
         if (conf < min_score) break;
     
         cv::Rect bbox{loc.x, loc.y, templ.cols, templ.rows};
-        hits.push_back(MatchBest{bbox, raw, conf});
+        hits.push_back(MatchBest{bbox, raw, conf, 1.0, templ.size()});
 
         const int rx = std::max(1, templ.cols / 4);
         const int ry = std::max(1, templ.rows / 4);

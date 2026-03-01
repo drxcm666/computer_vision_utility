@@ -13,6 +13,7 @@
 #include <charconv>
 #include <iomanip>
 #include <fstream>
+#include <cmath>
 #include <array>
 
 static cv::Mat to_gray(const cv::Mat &img)
@@ -82,7 +83,6 @@ static cvtool::core::ExitCode make_heatmap(
         err = fmt::format("error: heatmap requested but result matrix is empty");
         return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
     }
-    
 
     cv::Mat heat = result.clone();
     if (method == cv::TM_SQDIFF || method == cv::TM_SQDIFF_NORMED)
@@ -112,44 +112,59 @@ static cvtool::core::ExitCode write_match_json(
     const cv::Size &scene_size,
     const cv::Size &templ_size,
     const std::vector<cvtool::core::templ_match::MatchBest> &hits,
-    std::string &err
-)
+    const std::vector<cv::Rect> &rois,
+    bool roi_fallback_used,
+    const std::string &roi_source,
+    std::string &err)
 {
     nlohmann::ordered_json j;
-
 
     j["command"] = "match";
     j["input"] = opt.in_path;
     j["template"] = opt.templ_path;
     j["output"] = opt.out_path;
-    j["params"] = {{"mode", opt.mode}, {"method", opt.method},
-                {"max_results", opt.max_results}, {"min_score", opt.min_score}, {"nms", opt.nms},
-                {"draw", opt.draw}, {"thickness", opt.thickness}, {"font_scale", opt.font_scale}};
+    j["params"] = {{"mode", opt.mode}, {"method", opt.method}, {"max_results", opt.max_results}, {"min_score", opt.min_score}, {"nms", opt.nms}, {"draw", opt.draw}, {"thickness", opt.thickness}, {"font_scale", opt.font_scale}};
     j["template_size"] = {{"w", templ_size.width}, {"h", templ_size.height}};
     j["scene_size"] = {{"w", scene_size.width}, {"h", scene_size.height}};
 
-    if (!opt.roi.empty()) {
+    if (!opt.roi.empty())
+    {
         cv::Rect r;
         std::string err_dummy;
-        if (cvtool::core::validate::validate_roi(opt.roi, r, err_dummy) == cvtool::core::ExitCode::Ok) {
-            j["params"]["roi"] = { {"x", r.x}, {"y", r.y}, {"w", r.width}, {"h", r.height} };
-        } else {
+        if (cvtool::core::validate::validate_roi(opt.roi, r, err_dummy) == cvtool::core::ExitCode::Ok)
+        {
+            j["params"]["roi"] = {{"x", r.x}, {"y", r.y}, {"w", r.width}, {"h", r.height}};
+        }
+        else
+        {
             j["params"]["roi"] = nlohmann::ordered_json::object();
         }
-    } else {
+    }
+    else
+    {
         j["params"]["roi"] = nlohmann::ordered_json::object();
     }
 
+    j["roi_auto"] = opt.roi_auto;
+    j["roi_fallback"] = roi_fallback_used;
+    j["rois"] = nlohmann::json::array();
+    for (auto &r : rois)
+    {
+        j["rois"].push_back({
+            {"x", r.x}, {"y", r.y}, {"w", r.width}, {"h", r.height}, {"source", roi_source}
+        });
+    }
 
     j["matches"] = nlohmann::json::array();
-    for (int i = 0; i < static_cast<int>(hits.size()); ++i) {
-        const auto& h = hits[i];
-        j["matches"].push_back({
-            {"id", i},
-            {"bbox", {{"x", h.bbox.x}, {"y", h.bbox.y}, {"w", h.bbox.width}, {"h", h.bbox.height}}},
-            {"raw_score", h.raw_score},
-            {"confidence", h.confidence}
-        });
+    for (int i = 0; i < static_cast<int>(hits.size()); ++i)
+    {
+        const auto &h = hits[i];
+        j["matches"].push_back({{"id", i},
+                                {"bbox", {{"x", h.bbox.x}, {"y", h.bbox.y}, {"w", h.bbox.width}, {"h", h.bbox.height}}},
+                                {"raw_score", h.raw_score},
+                                {"confidence", h.confidence},
+                                {"scale", h.scale},
+                                {"template_size", {{"w", h.template_size.width}, {"h", h.template_size.height}}}});
     }
     j["stats"] = {{"found", (int)hits.size()}};
 
@@ -166,8 +181,131 @@ static cvtool::core::ExitCode write_match_json(
         fmt::println(stderr, "error: failed to write json output: {}", opt.json_path);
         return cvtool::core::ExitCode::CannotWriteOutput;
     }
-    
+
     return cvtool::core::ExitCode::Ok;
+}
+
+static double iou_rect(const cv::Rect &a, const cv::Rect &b)
+{
+    cv::Rect intersection = a & b;
+    const double interA = static_cast<double>(intersection.area());
+    double unionA = static_cast<double>(a.area()) + static_cast<double>(b.area()) - interA;
+    double proc{0.0};
+
+    if (unionA <= 0.0) return 0.0;
+
+    return interA / unionA;
+}
+
+static cv::Rect pad_clamp(cv::Rect r, int pad, const cv::Rect &bounds)
+{
+    r.x -= pad;
+    r.y -= pad;
+    r.width += 2 * pad;
+    r.height += 2 * pad;
+
+    cv::Rect result = r & bounds;
+
+    return result;
+}
+
+static std::vector<cv::Rect> merge_roi_iou(std::vector<cv::Rect> rois, double merge_iou)
+{
+    for (int iter = 0; iter < 4; iter++)
+    {
+        std::vector<cv::Rect> result;
+        bool changed = false;
+
+        for (int i = 0; i < rois.size(); i++)
+        {
+            if (result.empty())
+            {
+                result.emplace_back(rois[i]);
+                continue;
+            }
+
+            bool merged{false};
+            for (int j = 0; j < result.size(); j++)
+            {
+                if (iou_rect(result[j], rois[i]) > merge_iou)
+                {
+                    result[j] |= rois[i];
+                    merged = true;
+                    changed = true;
+
+                    break;
+                }
+            }
+            if (!merged)
+                result.emplace_back(rois[i]);
+        }
+        rois = std::move(result);
+        if (!changed)
+            break;
+    }
+
+    return rois;
+}
+
+static std::vector<cv::Rect> build_rois_edges(
+    const cv::Mat &scene_gray,
+    int low, int high, int blur_k,
+    int roi_max, double min_area,
+    int roi_pad, double roi_merge_iou)
+{
+    std::vector<cv::Rect> rois;
+    if (scene_gray.empty()) return rois;
+    
+    cv::Mat blur;
+    if (blur_k > 0){
+        cv::GaussianBlur(scene_gray, blur, cv::Size(blur_k, blur_k), 0, 0);
+    }
+    else blur = scene_gray;
+
+    cv::Mat edges;
+    cv::Canny(blur, edges, low, high);
+    cv::dilate(edges, edges, cv::Mat(), cv::Point(-1, -1), 2);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(edges.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    rois.reserve(contours.size());
+
+    cv::Size s = scene_gray.size();
+    double scene_area = s.width * s.height;
+    double min_area_px = min_area * scene_area;
+    for (auto &c : contours)
+    {
+        cv::Rect bounding_rect = cv::boundingRect(c);
+
+        if (static_cast<double>(bounding_rect.area()) <= min_area_px) continue;
+
+        rois.push_back(bounding_rect);
+    }
+
+    std::sort(rois.begin(), rois.end(), [](const cv::Rect &a, const cv::Rect &b)
+              { return a.area() > b.area(); });
+
+    if (rois.size() > roi_max * 4)
+    {
+        rois.resize(roi_max * 4);
+    }
+
+    std::vector<cv::Rect> merged = merge_roi_iou(rois, roi_merge_iou);
+    std::sort(merged.begin(), merged.end(), [](const cv::Rect &a, const cv::Rect &b)
+              { return a.area() > b.area(); });
+    if (merged.size() > roi_max)
+    {
+        merged.resize(roi_max);
+    }
+
+    cv::Rect bounds{0, 0, scene_gray.cols, scene_gray.rows};
+    for (auto &r : merged)
+    {
+        r = pad_clamp(r, roi_pad, bounds);
+    }
+
+    return merged;
 }
 
 cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
@@ -237,6 +375,57 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
         fmt::println(stderr, "{}", err);
         return fs_code;
     }
+    auto roi_merge_code = cvtool::core::validate::validate_01("roi-merge-iou", opt.roi_merge_iou, err);
+    if (roi_merge_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return roi_merge_code;
+    }
+    auto minarea_code = cvtool::core::validate::validate_01("roi-min-area", opt.roi_min_area, err);
+    if (minarea_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return minarea_code;
+    }
+    auto max_code = cvtool::core::validate::validate_max_results(opt.roi_max, err);
+    if (max_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return max_code;
+    }
+    auto pad_code = cvtool::core::validate::validate_nonneg("roi-pad", opt.roi_pad, err);
+    if (pad_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return pad_code;
+    }
+    auto blur_code = cvtool::core::validate::validate_blur_k(opt.roi_edges_blur_k, err);
+    if (blur_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return blur_code;
+    }
+    auto thr_code = cvtool::core::validate::validate_thresholds(opt.roi_edges_low, opt.roi_edges_high, err);
+    if (thr_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return thr_code;
+    }
+
+    double scale_min, scale_max, scale_step;
+    auto scale_code = cvtool::core::validate::validate_scale_range(opt.scales, scale_min, scale_max, scale_step, err);
+    if (scale_code != cvtool::core::ExitCode::Ok)
+    {
+        fmt::println(stderr, "{}", err);
+        return scale_code;
+    }
+    const int count = 1 + (static_cast<int>(std::floor((scale_max - scale_min) / scale_step + 1e-9)));
+    if (opt.max_scales > 0 && count > opt.max_scales)
+    {
+        fmt::println(stderr, "error: too many scales (count={}, max={})", count, opt.max_scales);
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+    const int per_scale_top = (opt.per_scale_top > 0) ? opt.per_scale_top : opt.max_results * 5;
 
     cv::Mat scene_proc, templ_proc;
     if (!prepare_for_match(scene, scene_proc, opt.mode, err) || !prepare_for_match(templ, templ_proc, opt.mode, err))
@@ -263,22 +452,17 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
     fmt::println("templ_size: {}x{}", templ_proc.cols, templ_proc.rows);
     fmt::println("scene_size: {}x{}", scene_proc.cols, scene_proc.rows);
     fmt::println("params: max_results={} min_score={:.2f} nms={:.2f} draw={} thickness={} font_scale={:.2f} roi={} json={} heatmap={}",
-             opt.max_results,
-             opt.min_score,
-             opt.nms,
-             opt.draw,
-             opt.thickness,
-             opt.font_scale,
-             opt.roi.empty() ? "none" : opt.roi,
-             opt.json_path.empty() ? "none" : opt.json_path,
-             opt.heatmap_path.empty() ? "none" : opt.heatmap_path);
- 
-    cv::Mat result;
-    cv::Mat *out_res = nullptr;
-    if (!opt.heatmap_path.empty())
-    {
-        out_res = &result;
-    }
+                 opt.max_results,
+                 opt.min_score,
+                 opt.nms,
+                 opt.draw,
+                 opt.thickness,
+                 opt.font_scale,
+                 opt.roi.empty() ? "none" : opt.roi,
+                 opt.json_path.empty() ? "none" : opt.json_path,
+                 opt.heatmap_path.empty() ? "none" : opt.heatmap_path);
+    fmt::println("scales: min={:.2f}, max={:.2f}, step={:.2f}, count={}", scale_min, scale_max, scale_step, count);
+    fmt::println("per_scale_top: {}", per_scale_top);
 
     cv::Rect roi;
     if (!opt.roi.empty())
@@ -293,37 +477,176 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
         cv::Rect bounds{0, 0, scene_proc.cols, scene_proc.rows};
         if ((roi & bounds) != roi)
         {
-            fmt::println(stderr, "error: roi out of bounds"); 
+            fmt::println(stderr, "error: roi out of bounds");
             return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
         }
     }
-    const cv::Mat scene_search = !opt.roi.empty() ? scene_proc(roi) : scene_proc;
 
-    if (templ_proc.cols > scene_search.cols || templ_proc.rows > scene_search.rows)
+
+    std::vector<cv::Rect> rois;
+    bool roi_fallback_used{false};
+    cv::Mat scene_gray = to_gray(scene_proc);
+
+    if (opt.roi_auto == "contours")
     {
-        const auto scene_w = scene_search.cols;
-        const auto scene_h = scene_search.rows;
-        fmt::println(stderr, "error: template larger than scene (templ: {}x{}, scene: {}x{})",
-                     templ_proc.cols, templ_proc.rows, scene_w, scene_h);
+        fmt::println(stderr, "error: roi-auto=contours not implemented yet");
         return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
     }
 
-    const int candidates = opt.max_results * 10;
-    const auto cands = cvtool::core::templ_match::match_topk(scene_search, templ_proc, method, candidates, opt.min_score, out_res);
-    auto hits_topk = cvtool::core::templ_match::nms_iou(cands, opt.nms, opt.max_results);
-
-    
-    if (!opt.roi.empty())
+    if (opt.roi.empty() && (opt.roi_auto == "edges"))
     {
-        for (auto &h : hits_topk)
+        rois = build_rois_edges(
+            scene_gray, opt.roi_edges_low,
+            opt.roi_edges_high, opt.roi_edges_blur_k,
+            opt.roi_max, opt.roi_min_area,
+            opt.roi_pad, opt.roi_merge_iou);
+
+        if (rois.empty())
         {
-            h.bbox.x += roi.x;
-            h.bbox.y += roi.y;
+            if (opt.roi_fallback)
+            {
+                rois.push_back(cv::Rect{0, 0, scene_gray.cols, scene_gray.rows});
+                roi_fallback_used = true;
+            }
+            else
+            {
+                fmt::println(stderr, "error: no ROI found");
+                return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+            }
+            
+        }
+
+        fmt::println("roi_auto: edges");
+        fmt::println("roi_count: {}", (int)rois.size());
+        for (int i = 0; i < (int)rois.size(); ++i)
+            fmt::println("roi[{}]: x={} y={} w={} h={}", i, rois[i].x, rois[i].y, rois[i].width, rois[i].height);
+
+        if (roi_fallback_used) fmt::println("roi_fallback_used: true");
+    }
+
+    std::vector<cv::Rect> search_rois;
+    std::string roi_source;
+    if (!opt.roi.empty()) {
+        search_rois.push_back(roi);
+    }
+    else if (opt.roi_auto == "edges") {
+        search_rois = rois;
+    }
+    else {
+        search_rois.push_back({0, 0, scene_proc.cols, scene_proc.rows});
+    }
+
+    int w_min = static_cast<int>(std::lround(templ_proc.cols * scale_min));
+    int h_min = static_cast<int>(std::lround(templ_proc.rows * scale_min));
+    search_rois.erase(std::remove_if(search_rois.begin(), search_rois.end(), 
+        [&](const cv::Rect &r){ 
+            return r.width < w_min || r.height < h_min; }), 
+            search_rois.end()
+    );
+    if (search_rois.empty())
+    {
+        if (opt.roi_auto == "edges" && opt.roi_fallback)
+        {
+            search_rois.push_back({0, 0, scene_proc.cols, scene_proc.rows});
+            roi_fallback_used = true;
+            fmt::println("roi_fallback_used: true");
+        }
+        else
+        {
+            fmt::println(stderr, "error: no ROI found");
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
         }
     }
-    if(out_res)
+
+    if (!opt.roi.empty())
+        roi_source = "manual";
+    else if (roi_fallback_used)
+        roi_source = "fallback";
+    else if (opt.roi_auto == "edges")
+        roi_source = "edges";
+    else
+        roi_source = "full";
+
+    std::vector<cvtool::core::templ_match::MatchBest> all;
+    all.reserve((std::size_t)count * (std::size_t)per_scale_top * (std::size_t)search_rois.size());
+    int valid_scales{0};
+    cv::Mat best_result;
+    double best_conf{-1.0};
+
+    cv::Mat result_s;
+    cv::Mat result_buffer;
+    for (auto &r : search_rois)
     {
-        auto heat_code = make_heatmap(result, method, opt.heatmap_path, err);
+        const cv::Mat sub_scene = scene_proc(r);
+
+        for (int i = 0; i < count; i++)
+        {
+            const double scale = scale_min + i * scale_step;
+            const int w_s = static_cast<int>(std::lround(templ_proc.cols * scale));
+            const int h_s = static_cast<int>(std::lround(templ_proc.rows * scale));
+
+            if (w_s < 2 || h_s < 2)
+                continue;
+            if (w_s > sub_scene.cols || h_s > sub_scene.rows)
+                continue;
+
+            valid_scales++;
+
+            cv::Mat templ_s;
+            if (std::abs(scale - 1) < 1e-5)
+            {
+                templ_s = templ_proc;
+            }
+            else
+            {
+                const auto interp = (scale < 1.0) ? cv::INTER_AREA : cv::INTER_LINEAR;
+                cv::resize(templ_proc, templ_s, cv::Size(w_s, h_s), 0, 0, interp);
+            }
+            
+            cv::Mat *out_res_s = opt.heatmap_path.empty() ? nullptr : &result_buffer;
+            auto cands = cvtool::core::templ_match::match_topk(sub_scene, templ_s, method, per_scale_top, opt.min_score, out_res_s);
+
+            for (auto &hh : cands)
+            {
+                hh.scale = scale;
+                hh.template_size = templ_s.size();
+                hh.bbox.x += r.x;
+                hh.bbox.y += r.y;
+            }
+
+            all.insert(all.end(), cands.begin(), cands.end());
+
+            if (!opt.heatmap_path.empty())
+            {
+                bool is_new_record = false;
+
+                if (best_result.empty() && !result_buffer.empty())
+                    is_new_record = true;
+
+                if (!cands.empty() && cands[0].confidence > best_conf)
+                    is_new_record = true;
+
+                if (is_new_record)
+                {
+                    if (!cands.empty()) best_conf = cands[0].confidence;
+
+                    best_result = result_buffer.clone();
+                }
+            }
+        }
+    }
+
+    if (valid_scales == 0)
+    {
+        fmt::println(stderr, "error: no valid scales (template never fits into scene/roi)");
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    auto hits_topk = cvtool::core::templ_match::nms_iou(all, opt.nms, opt.max_results);
+
+    if (!opt.heatmap_path.empty())
+    {
+        auto heat_code = make_heatmap(best_result, method, opt.heatmap_path, err);
         if (heat_code != cvtool::core::ExitCode::Ok)
         {
             fmt::println(stderr, "{}", err);
@@ -332,7 +655,16 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
     }
     if (!opt.json_path.empty())
     {
-        const auto json_code = write_match_json(opt, scene_proc.size(), templ_proc.size(), hits_topk, err);
+        const auto json_code = write_match_json(
+            opt,
+            scene_proc.size(),
+            templ_proc.size(),
+            hits_topk,
+            search_rois,
+            roi_fallback_used,
+            roi_source,
+            err
+        );
         if (json_code != cvtool::core::ExitCode::Ok)
         {
             fmt::println(stderr, "{}", err);
@@ -340,14 +672,22 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
         }
     }
 
-
     cv::Mat vis;
     if (!to_bgr(scene, vis, err))
     {
         fmt::println(stderr, "{}", err);
         return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
     }
-    for (int i = 0; i <static_cast<int>(hits_topk.size()); i++)
+
+    if (opt.draw_roi)
+    {
+        for (int i = 0; i < static_cast<int>(search_rois.size()); i++)
+        {
+            const auto &h = search_rois[i];
+            cv::rectangle(vis, h, cv::Scalar(0, 0, 255), 1);
+        }
+    }
+    for (int i = 0; i < static_cast<int>(hits_topk.size()); i++)
     {
         const auto &h = hits_topk[i];
 
@@ -359,19 +699,20 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
         if (opt.draw != "bbox")
         {
             const bool with_score = (opt.draw == "bbox+label+score");
-            const auto text = with_score ? fmt::format("#{} conf:{:.2f}", i, h.confidence)
-                                         : fmt::format("#{}", i);
+            const auto text = with_score ? fmt::format("#{} conf={:.2f} s={:.2f}", i, h.confidence, h.scale)
+                                         : fmt::format("#{} s={:.2f}", i, h.scale);
 
             cv::putText(
-            vis,
-            text,
-            text_pos,
-            cv::FONT_HERSHEY_SIMPLEX,
-            opt.font_scale,
-            cv::Scalar(0, 255, 0),
-            1);
+                vis,
+                text,
+                text_pos,
+                cv::FONT_HERSHEY_SIMPLEX,
+                opt.font_scale,
+                cv::Scalar(0, 255, 0),
+                1);
         }
     }
+
 
     if (hits_topk.empty())
     {
@@ -387,9 +728,12 @@ cvtool::core::ExitCode run_match(const cvtool::cmd::MatchOptions &opt)
 
     fmt::println("status: ok\nfound: {}", hits_topk.size());
     if (!hits_topk.empty())
-        fmt::println("best: conf={:.2f} raw={:.4f} at x={} y={}",
-                     hits_topk[0].confidence, hits_topk[0].raw_score, hits_topk[0].bbox.x, hits_topk[0].bbox.y);
-
+    {
+        fmt::println("best: conf={:.2f} raw={:.4f} at x={} y={} scale={:.2f}",
+                     hits_topk[0].confidence, hits_topk[0].raw_score,
+                     hits_topk[0].bbox.x, hits_topk[0].bbox.y,
+                     hits_topk[0].scale);
+    }
 
     const auto write_code = cvtool::core::image_io::write_image(opt.out_path, vis, err);
     if (write_code != cvtool::core::ExitCode::Ok)

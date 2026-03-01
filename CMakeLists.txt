@@ -29,6 +29,7 @@ add_executable(cvtool
     src/core/threshold.cpp
     src/core/contours_core.cpp
     src/core/template_match.cpp
+    src/core/match_roi_edges.cpp
 )
 
 # Link libraries

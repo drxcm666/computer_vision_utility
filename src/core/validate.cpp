@@ -23,7 +23,6 @@ cvtool::core::ExitCode validate_gray_channels(int channels, std::string &err)
 
 cvtool::core::ExitCode validate_blur(const cv::Mat &img, int k, std::string &err)
 {
-    // composite: parameter rules + fit-in-image
     const cvtool::core::ExitCode p = validate_blur_k(k, err);
     if (p != cvtool::core::ExitCode::Ok) return p;
     return validate_blur_fit(img, k, err);
@@ -233,15 +232,15 @@ cvtool::core::ExitCode validate_roi(std::string_view str, cv::Rect &out, std::st
     std::array<int, 4> numbers;
     for (int i = 0; i < numbers.size(); i++)
     {
-        auto tok = trim_view(result[i]);
-        if (tok.empty()) 
+        auto trim = trim_view(result[i]);
+        if (trim.empty()) 
         { 
             err = "error: roi has empty value (expected x,y,w,h)"; 
             return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
         }
 
-        const char *b = tok.data();
-        const char *e = tok.data() + tok.size();
+        const char *b = trim.data();
+        const char *e = trim.data() + trim.size();
         auto [ptr, ec] = std::from_chars(b, e, numbers[i]);
         
         if (ec != std::errc() || ptr != e)
@@ -295,5 +294,90 @@ cvtool::core::ExitCode validate_font_scale(double fs, std::string &err)
 
     return cvtool::core::ExitCode::Ok;
 }
+
+cvtool::core::ExitCode validate_nonneg(std::string_view name, int v, std::string &err)
+{
+    if (v >= 0)
+    {
+        err.clear();
+        return cvtool::core::ExitCode::Ok;
+    }
+    err = fmt::format("error: {} must be >= 0: {}", name, v);
+    return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+}
+
+cvtool::core::ExitCode validate_scale_range(std::string_view str, double &min, double &max, double &step, std::string &err)
+{
+    if (str.empty())
+    {
+        min = 1.0; max = 1.0; step = 0.05;
+        return cvtool::core::ExitCode::Ok;
+    }
+
+    std::array<std::string_view, 3> result;
+    std::size_t pos{0};
+    std::size_t found{0};
+    int i{0};
+
+    while ((found = str.find(':', pos)) != std::string_view::npos)
+    {
+        if (i >= 3)
+        {
+            err = fmt::format("error: too many values for scale (expected 3: min:max:step)");
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+        }
+        
+        result[i++] = str.substr(pos, found - pos);
+        pos = found + 1;
+    }
+    result[i] = str.substr(pos);
+
+    if (i != 2)
+    {
+        err = fmt::format("error: scale must be 3 doubles: min:max:step");
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+
+    std::array<double, 3> numbers;
+    for (int i = 0; i < numbers.size(); i++)
+    {
+        auto trim = trim_view(result[i]);
+
+        if (trim.empty())
+        {
+            err = fmt::format("error: scale has empty value (expected min:max:step)");
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+        }
+
+        const char *b = trim.data();
+        const char *e = trim.data() + trim.size();
+        auto [ptr, ec] = std::from_chars(b, e, numbers[i]);
+
+        if (ec != std::errc() || ptr != e)
+        {
+            err = fmt::format("error: scale parameters must be valid numbers");
+            return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+        }
+    }
+
+    min = numbers[0];
+    max = numbers[1];
+    step = numbers[2]; 
+
+    if (min <= 0 || max <= 0 || step <= 0)
+    {
+        err = fmt::format("error: scales must be > 0 (min:max:step)");
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+    if (min > max)
+    {
+        err = fmt::format("error: scale_min must be <= scale_max");
+        return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+    }
+    
+    return cvtool::core::ExitCode::Ok;
+}
+
+
 
 }
