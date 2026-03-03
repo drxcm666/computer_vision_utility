@@ -13,7 +13,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Create executable
-add_executable(cvtool 
+add_executable(cvtool
     src/main.cpp
     src/commands/info.cpp
     src/commands/gray.cpp
@@ -22,6 +22,14 @@ add_executable(cvtool
     src/commands/video_edges.cpp
     src/commands/contours.cpp
     src/commands/match.cpp
+    src/commands/match_validate.cpp
+
+    src/core/match/match_heatmap.cpp
+    src/core/match/match_render.cpp
+    src/core/match/match_json.cpp
+    src/core/match/match_search_ms.cpp
+    src/core/match/match_prepare.cpp
+
     src/core/edges_pipeline.cpp
     src/core/validate.cpp
     src/core/image_io.cpp
@@ -29,7 +37,8 @@ add_executable(cvtool
     src/core/threshold.cpp
     src/core/contours_core.cpp
     src/core/template_match.cpp
-    src/core/match_roi_edges.cpp
+    src/core/rois_edges.cpp
+    src/core/image_convert.cpp
 )
 
 # Link libraries

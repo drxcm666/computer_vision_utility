@@ -106,7 +106,7 @@ std::vector<MatchBest> nms_iou(
         idx[i] = i;
     }
 
-    std::sort(idx.begin(), idx.end(), [&](int i, int j){ return hits[i].confidence > hits[j].confidence; });
+    std::sort(idx.begin(), idx.end(), [&](const int i, const int j){ return hits[i].confidence > hits[j].confidence; });
 
     std::vector<MatchBest> out;
     out.reserve(std::min(max_keep, static_cast<int>(hits.size())));
