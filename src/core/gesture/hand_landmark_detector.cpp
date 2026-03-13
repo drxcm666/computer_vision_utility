@@ -15,7 +15,7 @@ cv::Mat HandLandmarkDetector::preprocess_image(const cv::Mat &frame)
 {
     cv::Mat result;
     cv::cvtColor(frame, result, cv::COLOR_BGR2RGB);
-    cv::resize(result, result, cv::Size(224, 224));
+    cv::resize(result, result, cv::Size(input_width_, input_height_));
     result.convertTo(result, CV_32F, 1.0 / 255.0);
 
     return result;
@@ -23,10 +23,9 @@ cv::Mat HandLandmarkDetector::preprocess_image(const cv::Mat &frame)
 
 Ort::Value HandLandmarkDetector::create_input_tensor(const cv::Mat &blob)
 {
-    static std::array<int64_t, 4> input_shape{1, 3, 224, 224};
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
-        memory_info, const_cast<float *>(blob.ptr<float>()), blob.total(), input_shape.data(), input_shape.size());
+        memory_info, const_cast<float *>(blob.ptr<float>()), blob.total(), input_shape_.data(), input_shape_.size());
 
     return input_tensor;
 }
@@ -36,12 +35,23 @@ cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::decode_output(
 {
     cvtool::core::gesture::HandLandmarkResult result{};
 
+    if (out_tensor.size() < 3) return result;
+
+    auto info_xyz = out_tensor[0].GetTensorTypeAndShapeInfo();
+    std::size_t total_size_xyz = info_xyz.GetElementCount();
+    auto info_score = out_tensor[1].GetTensorTypeAndShapeInfo();
+    std::size_t total_size_score = info_score.GetElementCount();
+    auto info_lr = out_tensor[2].GetTensorTypeAndShapeInfo();
+    std::size_t total_size_lr = info_lr.GetElementCount();
+    if (total_size_xyz != 63 || total_size_score != 1 || total_size_lr != 1)
+        return result;
+
+    
     float *xyz = out_tensor[0].GetTensorMutableData<float>();
     float *hand_score = out_tensor[1].GetTensorMutableData<float>();
     float *lefthand_righthand = out_tensor[2].GetTensorMutableData<float>();
 
-    if (hand_score[0] <= 0.5f)
-        return result;
+    if (hand_score[0] <= min_hand_score_) return result;
 
     result.confidence = hand_score[0];
 
@@ -54,11 +64,11 @@ cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::decode_output(
 
     for (int i = 0; i < 21; i++)
     {
-        float x = roi.empty() ? (xyz[i * 3] / 224.0f * frame.cols) : 
-                                ((xyz[i * 3] / 224.0f) * roi.width + roi.x);
+        float x = roi.empty() ? (xyz[i * 3] / static_cast<float>(input_width_) * frame.cols) : 
+                                ((xyz[i * 3] / static_cast<float>(input_width_)) * roi.width + roi.x);
 
-        float y = roi.empty() ? (xyz[i * 3 + 1] / 224.0f * frame.rows) : 
-                                ((xyz[i * 3 + 1] / 224.0f) * roi.height + roi.y);
+        float y = roi.empty() ? (xyz[i * 3 + 1] / static_cast<float>(input_height_) * frame.rows) : 
+                                ((xyz[i * 3 + 1] / static_cast<float>(input_height_)) * roi.height + roi.y);
 
         result.points[i] = cv::Point2f(x, y);
     }
@@ -134,19 +144,25 @@ cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::detect(
     cv::Mat blob = cv::dnn::blobFromImage(processed_frame);
     Ort::Value input_tensor = create_input_tensor(blob);
 
-    std::array<const char *, 1> input_names = {"input"};
-    std::array<const char *, 3> output_names = {"xyz_x21", "hand_score", "lefthand_0_or_righthand_1"};
-
     try
     {
         auto output_tensors = session_->Run(
-            Ort::RunOptions{nullptr}, input_names.data(), &input_tensor, 1, output_names.data(), 3);
+            Ort::RunOptions{nullptr}, 
+            input_names_.data(), 
+            &input_tensor, 1, 
+            output_names_.data(), 3);
         
         return decode_output(output_tensors, frame, roi);
     }
     catch(const Ort::Exception &e)
     {
-        last_error_ = fmt::format("error: ");
+        last_error_ = e.what();
+        return cvtool::core::gesture::HandLandmarkResult{};
+    }
+    catch(const std::exception &e)
+    {
+        last_error_ = e.what();
+        return cvtool::core::gesture::HandLandmarkResult{};
     }
 }
 

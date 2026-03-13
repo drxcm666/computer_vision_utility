@@ -57,10 +57,36 @@ static void render_debug_overlay(
                 cv::LINE_AA);
 
     cv::putText(frame,
-                fmt::format("confidence : {}", confidence),
+                fmt::format("confidence : {:.2f}", confidence),
                 cv::Point(x, y + line_height * 5),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
+}
+
+static void draw_hand_landmarks(
+    const cv::Mat &display_frame, 
+    const cvtool::core::gesture::HandLandmarkResult &result, 
+    std::vector<std::pair<int, int>> &connections)
+{
+    std::array<cv::Point, 21> pixel_points;
+
+    for (int i = 0; i < 21; i++)
+    {
+        cv::circle(display_frame, cv::Point(result.points[i].x, result.points[i].y), 5, cv::Scalar(0, 255, 0), -1);
+
+        pixel_points[i] = cv::Point(result.points[i].x, result.points[i].y);
+    }
+
+    for (auto &bone : connections)
+    {
+        int indexA = bone.first;
+        int indexB = bone.second;
+
+        cv::Point ptA = pixel_points[indexA];
+        cv::Point ptB = pixel_points[indexB];
+
+        cv::line(display_frame, ptA, ptB, cv::Scalar(0, 255, 0), 1);
+    }
 }
 
 cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &opt)
@@ -89,7 +115,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
     }
 
     cvtool::core::gesture::GestureImageBank bank;
-    auto bank_code = cvtool::core::gesture::load_gesture_image_bank(opt.map_path, bank, warnings, err);
+    auto bank_code = cvtool::core::gesture::load_gesture_image_bank(
+        opt.map_path, bank, warnings, err);
     if (bank_code != cvtool::core::ExitCode::Ok)
     {
         fmt::println(stderr, "{}", err);
@@ -201,9 +228,7 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         }
 
         if (opt.mirror)
-        {
             cv::flip(frame, frame, 1);
-        }
 
         cv::Mat display_frame = frame.clone();
         cv::Rect safe_roi{0, 0, 0, 0};
@@ -216,12 +241,6 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
                 roi_warned = false;
 
                 cv::Mat roi_part = display_frame(safe_roi);
-
-                // cv::Mat gray_roi;
-                // cv::cvtColor(roi_part, gray_roi, cv::COLOR_BGR2GRAY);
-                // cv::Mat bgr_gray_roi;
-                // cv::cvtColor(gray_roi, bgr_gray_roi, cv::COLOR_GRAY2BGR);
-                // bgr_gray_roi.copyTo(roi_part);
                 cv::rectangle(display_frame, safe_roi, cv::Scalar(0, 255, 0), 2);
             }
             else if (!roi_warned)
@@ -245,25 +264,7 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         {
             current_gesture = cvtool::core::gesture::GestureID::Unknown;
 
-            std::array<cv::Point, 21> pixel_points;
-
-            for (int i = 0; i < 21; i++)
-            {
-                cv::circle(display_frame, cv::Point(result.points[i].x, result.points[i].y), 5, cv::Scalar(0, 255, 0), -1);
-
-                pixel_points[i] = cv::Point(result.points[i].x, result.points[i].y);
-            }
-
-            for (auto &bone : connections)
-            {
-                int indexA = bone.first;
-                int indexB = bone.second;
-
-                cv::Point ptA = pixel_points[indexA];
-                cv::Point ptB = pixel_points[indexB];
-
-                cv::line(display_frame, ptA, ptB, cv::Scalar(0, 255, 0), 1);
-            }
+            draw_hand_landmarks(display_frame, result, connections);
         }
         else
         {
