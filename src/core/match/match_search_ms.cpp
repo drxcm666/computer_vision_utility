@@ -1,5 +1,6 @@
 #include "cvtool/core/match/match_search_ms.hpp"
 
+#include <cmath>
 #include <opencv2/imgproc.hpp>
 
 namespace cvtool::core::match_search_ms

@@ -50,4 +50,5 @@ cvtool::core::ExitCode validate_scale_range(std::string_view str, double &min, d
 
 cvtool::core::ExitCode validate_nonneg(std::string_view name, int v, std::string &err);
 
+cvtool::core::ExitCode validate_screen_resolution(const std::string &s, int &w, int &h, std::string &err);
 }

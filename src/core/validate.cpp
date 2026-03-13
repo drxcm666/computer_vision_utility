@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 #include <algorithm>
 #include <charconv>
+#include <cctype>
 
 namespace cvtool::core::validate
 {
@@ -378,6 +379,13 @@ cvtool::core::ExitCode validate_scale_range(std::string_view str, double &min, d
     return cvtool::core::ExitCode::Ok;
 }
 
+cvtool::core::ExitCode validate_screen_resolution(const std::string &s, int &w, int &h, std::string &err)
+{
+    if (sscanf(s.c_str(), "%dx%d", &w, &h) == 2 && w > 0 && h > 0)
+        return cvtool::core::ExitCode::Ok;
 
+    err = fmt::format("must be WIDTHxHEIGHT with positive integers");
+    return cvtool::core::ExitCode::InvalidParamsOrUnsupported;
+}
 
 }

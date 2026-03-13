@@ -31,7 +31,6 @@ cvtool::core::ExitCode read_image(const std::string &in_path, cv::Mat &out_image
         err = fmt::format("error: input file not found: {}", in_path);
         return cvtool::core::ExitCode::InputNotFoundOrNoAccess;
     }
-    
     try
     {
         cv::Mat img = cv::imread(in_path, cv::IMREAD_UNCHANGED);

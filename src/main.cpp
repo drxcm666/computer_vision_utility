@@ -6,6 +6,7 @@
 #include "cvtool/commands/video_edges.hpp"
 #include "cvtool/commands/contours.hpp"
 #include "cvtool/commands/match.hpp"
+#include "cvtool/commands/gesture_show.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -89,6 +90,7 @@ int main(int argc, char **argv)
         "video-edges", "Detect edges in video frames");
     auto *contours = app.add_subcommand("contours", "Threshold + contour detection + bboxes");
     auto *match = app.add_subcommand("match", "Temple matching (find pattern)");
+    auto *gesture_show = app.add_subcommand("gesture-show", "Gesture recognition on a webcam");
 
     cvtool::cmd::InfoOptions inop;
     info->add_option("--in", inop.in_path, "Input file path")
@@ -194,9 +196,8 @@ int main(int argc, char **argv)
          ->check(CLI::Range(0, std::numeric_limits<int>::max()));
     match->add_option("--max-scales", mapt.max_scales, "Limit count of scale")
          ->check(CLI::Range(0, std::numeric_limits<int>::max()));
-
     match->add_option("--roi-auto", mapt.roi_auto, "ROI auto: none|edges|contours")
-    ->check(CLI::IsMember({"none", "edges", "contours"}));
+         ->check(CLI::IsMember({"none", "edges", "contours"}));
     match->add_option("--roi-max", mapt.roi_max, "Max ROI count")
          ->check(CLI::Range(0, std::numeric_limits<int>::max()))->default_val(8);
     match->add_option("--roi-min-area", mapt.roi_min_area, "Min ROI area (fraction of scene)")
@@ -215,6 +216,18 @@ int main(int argc, char **argv)
          ->check(Validators::odd_or_zero)->default_val(5);
     match->add_option("--draw-roi", mapt.draw_roi, "Draw ROI rectangles")
          ->default_val("false");
+
+    cvtool::cmd::GestureShowOptions gsop;
+    gesture_show->add_option("--cam", gsop.cam, "Camera device index (e.g. 0 for default)")
+                ->check(CLI::Range(0, std::numeric_limits<int>::max()))->default_val(0);
+    gesture_show->add_option("--map", gsop.map_path, "Path to JSON with instructions")
+                ->required()->check(CLI::ExistingFile);
+    gesture_show->add_option("--size", gsop.size_str, "Camera capture size WIDTHxHEIGHT (e.g. 800x600)");
+    gesture_show->add_flag("--mirror", gsop.mirror, "Mirror camera, (default: false)");
+    gesture_show->add_option("--roi", gsop.roi, "Region of interest: x,y,w,h");
+    gesture_show->add_flag("--show-debug", gsop.show_debug, "Display debug overlays");
+    gesture_show->add_option("--model", gsop.model_path, "")
+                ->required()->check(CLI::ExistingFile);
 
 
     cvtool::core::ExitCode rc{0};
@@ -240,6 +253,8 @@ int main(int argc, char **argv)
     contours->callback([&]{ rc = run_contours(copt); });
 
     match->callback([&]{ rc = run_match(mapt); });
+
+    gesture_show->callback([&]{ rc = run_gesture_show(gsop); });
 
     try
     {

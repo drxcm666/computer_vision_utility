@@ -3,6 +3,8 @@
 
 #include <fmt/format.h>
 
+#include <cmath>
+
 namespace cvtool::cmd::match_validate
 {
 

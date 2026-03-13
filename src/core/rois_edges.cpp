@@ -3,8 +3,7 @@
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 
-namespace cvtool::core::roi_edges
-{
+namespace cvtool::core::roi_edges{
 
 static double iou_rect(const cv::Rect &a, const cv::Rect &b)
 {
