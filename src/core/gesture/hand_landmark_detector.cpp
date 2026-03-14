@@ -13,12 +13,13 @@ namespace cvtool::core::gesture
 
 cv::Mat HandLandmarkDetector::preprocess_image(const cv::Mat &frame)
 {
-    cv::Mat result;
-    cv::cvtColor(frame, result, cv::COLOR_BGR2RGB);
-    cv::resize(result, result, cv::Size(input_width_, input_height_));
-    result.convertTo(result, CV_32F, 1.0 / 255.0);
+    cv::Mat colored;
+    cv::cvtColor(frame, colored, cv::COLOR_BGR2RGB);
+    cv::Mat resized;
+    cv::resize(colored, resized, cv::Size(input_width_, input_height_));
+    resized.convertTo(resized, CV_32F, 1.0 / 255.0);
 
-    return result;
+    return resized;
 }
 
 Ort::Value HandLandmarkDetector::create_input_tensor(const cv::Mat &blob)

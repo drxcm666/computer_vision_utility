@@ -4,6 +4,7 @@
 #include "cvtool/core/gesture/display_utils.hpp"
 #include "cvtool/core/gesture/gesture_domain.hpp"
 #include "cvtool/core/gesture/hand_landmark_detector.hpp"
+#include "cvtool/core/gesture/gesture_rules.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
@@ -18,7 +19,7 @@
 static void render_debug_overlay(
     const cvtool::cmd::GestureShowOptions &opt,
     int w, int h, cv::Mat &frame, cv::Rect sr, cvtool::core::gesture::GestureID id,
-    float confidence)
+    float confidence, std::string fingers_str)
 {
     int x{10};
     int y{30};
@@ -61,12 +62,18 @@ static void render_debug_overlay(
                 cv::Point(x, y + line_height * 5),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
+
+    cv::putText(frame,
+                fmt::format("fingers: {}", fingers_str),
+                cv::Point(x, y + line_height * 6),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
+                cv::LINE_AA);
 }
 
 static void draw_hand_landmarks(
-    const cv::Mat &display_frame, 
+    cv::Mat &display_frame, 
     const cvtool::core::gesture::HandLandmarkResult &result, 
-    std::vector<std::pair<int, int>> &connections)
+    const std::vector<std::pair<int, int>> &connections)
 {
     std::array<cv::Point, 21> pixel_points;
 
@@ -150,8 +157,6 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
 
     auto current_gesture{cvtool::core::gesture::GestureID::None};
 
-    double prop1, prop2;
-
     cvtool::core::gesture::HandLandmarkDetector detector;
     auto det_code = detector.initialize(opt.model_path, err);
     if (det_code != cvtool::core::ExitCode::Ok)
@@ -168,7 +173,7 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         {9, 10}, {10, 11}, {11, 12},
         // Ring finger
         {13, 14}, {14, 15}, {15, 16},
-        // Little finger
+        // Pinky finger
         {17, 18}, {18, 19}, {19, 20},
         // Palm (connect the bases of the fingers)
         {0, 5}, {5, 9}, {9, 13}, {13, 17}, {0, 17}};
@@ -194,9 +199,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             }
             if (window_initialized)
             {
-                prop1 = cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE);
-                prop2 = cv::getWindowProperty(gesture_winname, cv::WND_PROP_VISIBLE);
-                if (prop1 < 1.0 || prop2 < 1.0)
+                if (cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE) < 1.0 || 
+                    cv::getWindowProperty(gesture_winname, cv::WND_PROP_VISIBLE) < 1.0)
                 {
                     fmt::println("Window closed by user during camera failure");
                     break;
@@ -240,7 +244,6 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             {
                 roi_warned = false;
 
-                cv::Mat roi_part = display_frame(safe_roi);
                 cv::rectangle(display_frame, safe_roi, cv::Scalar(0, 255, 0), 2);
             }
             else if (!roi_warned)
@@ -259,12 +262,20 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             result = detector.detect(frame, safe_roi);
         }  
 
-        
+        std::string debug_fingers_str = "None";
         if (result.has_hand)
         {
-            current_gesture = cvtool::core::gesture::GestureID::Unknown;
-
+            current_gesture = cvtool::core::gesture::classify_hand_gesture(result);
             draw_hand_landmarks(display_frame, result, connections);
+            
+            auto state = cvtool::core::gesture::extract_finger_state(result);
+            
+            debug_fingers_str = fmt::format("T={} I={} M={} R={} P={}",
+                state.thumb_extended ? 1 : 0, 
+                state.index_extended ? 1 : 0, 
+                state.middle_extended ? 1 : 0, 
+                state.ring_extended ? 1 : 0, 
+                state.pinky_extended ? 1 : 0);
         }
         else
         {
@@ -282,7 +293,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
                 opt, display_frame.cols, display_frame.rows,
                 display_frame, safe_roi,
                 current_gesture,
-                result.confidence);
+                result.confidence,
+                debug_fingers_str);
         }
 
         cv::imshow(winname, display_frame);
@@ -295,9 +307,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             break;
         }
 
-        prop1 = cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE);
-        prop2 = cv::getWindowProperty(gesture_winname, cv::WND_PROP_VISIBLE);
-        if (window_initialized && (prop1 < 1.0 || prop2 < 1.0))
+        if (cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE) < 1.0 ||
+            cv::getWindowProperty(gesture_winname, cv::WND_PROP_VISIBLE) < 1.0)
         {
             fmt::println("Window closed by user (X button)");
             break;

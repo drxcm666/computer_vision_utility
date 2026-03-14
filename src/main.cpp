@@ -226,7 +226,7 @@ int main(int argc, char **argv)
     gesture_show->add_flag("--mirror", gsop.mirror, "Mirror camera, (default: false)");
     gesture_show->add_option("--roi", gsop.roi, "Region of interest: x,y,w,h");
     gesture_show->add_flag("--show-debug", gsop.show_debug, "Display debug overlays");
-    gesture_show->add_option("--model", gsop.model_path, "")
+    gesture_show->add_option("--model", gsop.model_path, "The path to a hand recognition model")
                 ->required()->check(CLI::ExistingFile);
 
 
