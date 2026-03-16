@@ -15,6 +15,8 @@ struct GestureShowOptions
     std::string roi;
     bool show_debug{false};
     std::string model_path;
+    int stable_frames{5};
+    int cooldown_ms{300};
 };
 
 }

@@ -15,9 +15,19 @@ struct FingerState
     bool pinky_extended{false};
 };
 
+
+struct ClassifierResult
+{
+    GestureID gesture;
+    FingerState state;
+
+};
+
 FingerState extract_finger_state(const cvtool::core::gesture::HandLandmarkResult &data);
 
-cvtool::core::gesture::GestureID classify_hand_gesture(const cvtool::core::gesture::HandLandmarkResult &data);
+bool can_classify_hand(const cvtool::core::gesture::HandLandmarkResult &data);
+
+cvtool::core::gesture::ClassifierResult classify_hand_gesture(const cvtool::core::gesture::HandLandmarkResult &data);
 
 
 

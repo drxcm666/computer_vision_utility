@@ -13,7 +13,6 @@
 
 namespace cvtool::core::gesture
 {
-
     class HandLandmarkDetector
     {
     private:

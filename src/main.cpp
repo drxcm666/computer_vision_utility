@@ -228,7 +228,12 @@ int main(int argc, char **argv)
     gesture_show->add_flag("--show-debug", gsop.show_debug, "Display debug overlays");
     gesture_show->add_option("--model", gsop.model_path, "The path to a hand recognition model")
                 ->required()->check(CLI::ExistingFile);
-
+    gesture_show->add_option("--stable_frames", gsop.stable_frames, 
+                "How many consecutive frames the same gesture must appear to be considered stable")
+                ->check(CLI::Range(1, 100));
+    gesture_show->add_option("--cooldown_ms", gsop.cooldown_ms, 
+                "Cooldown in milliseconds after a stable gesture change")
+                ->check(CLI::NonNegativeNumber);
 
     cvtool::core::ExitCode rc{0};
 

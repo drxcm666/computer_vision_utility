@@ -5,6 +5,7 @@
 #include "cvtool/core/gesture/gesture_domain.hpp"
 #include "cvtool/core/gesture/hand_landmark_detector.hpp"
 #include "cvtool/core/gesture/gesture_rules.hpp"
+#include "cvtool/core/gesture/gesture_stabilizer.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
@@ -18,7 +19,9 @@
 
 static void render_debug_overlay(
     const cvtool::cmd::GestureShowOptions &opt,
-    int w, int h, cv::Mat &frame, cv::Rect sr, cvtool::core::gesture::GestureID id,
+    int w, int h, cv::Mat &frame,
+    cv::Rect sr, cvtool::core::gesture::GestureID raw_id,
+    cvtool::core::gesture::StabilizerResult &stab_res,
     float confidence, std::string fingers_str)
 {
     int x{10};
@@ -46,33 +49,49 @@ static void render_debug_overlay(
 
     cv::putText(frame,
                 fmt::format("roi: {}, sr: [x={}, y={}, w={}, h={}]",
-                            !opt.roi.empty(), sr.x, sr.y, sr.width, sr.height),
+                    !opt.roi.empty(), sr.x, sr.y, sr.width, sr.height),
                 cv::Point(x, y + line_height * 3),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 
     cv::putText(frame,
-                fmt::format("gesture: {}", cvtool::core::gesture::to_debug_label(id)),
+                fmt::format("stable gesture: {}",
+                    cvtool::core::gesture::to_debug_label(stab_res.stable_gesture)),
                 cv::Point(x, y + line_height * 4),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 
     cv::putText(frame,
-                fmt::format("confidence : {:.2f}", confidence),
+                fmt::format("raw gesture : {}", 
+                    cvtool::core::gesture::to_debug_label(raw_id)),
                 cv::Point(x, y + line_height * 5),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 
     cv::putText(frame,
-                fmt::format("fingers: {}", fingers_str),
+                fmt::format("candidate: {} ({}/5)",
+                            cvtool::core::gesture::to_debug_label(stab_res.candidate_gesture),
+                            stab_res.candidate_count),
                 cv::Point(x, y + line_height * 6),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
+                cv::LINE_AA);
+
+    cv::putText(frame,
+                fmt::format("confidence : {:.2f}", confidence),
+                cv::Point(x, y + line_height * 7),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
+                cv::LINE_AA);
+
+    cv::putText(frame,
+                fmt::format("fingers: {}", fingers_str),
+                cv::Point(x, y + line_height * 8),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 }
 
 static void draw_hand_landmarks(
-    cv::Mat &display_frame, 
-    const cvtool::core::gesture::HandLandmarkResult &result, 
+    cv::Mat &display_frame,
+    const cvtool::core::gesture::HandLandmarkResult &result,
     const std::vector<std::pair<int, int>> &connections)
 {
     std::array<cv::Point, 21> pixel_points;
@@ -107,6 +126,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         fmt::println(stderr, "Cannot open the camera");
         return cvtool::core::ExitCode::CannotOpenOrReadInput;
     }
+    cap.set(cv::CAP_PROP_FPS, 60);
+    cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
 
     int width, height;
     if (!opt.size_str.empty())
@@ -155,7 +176,7 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
     bool window_initialized{false};
     bool roi_warned{false};
 
-    auto current_gesture{cvtool::core::gesture::GestureID::None};
+    auto display_gesture{cvtool::core::gesture::GestureID::None};
 
     cvtool::core::gesture::HandLandmarkDetector detector;
     auto det_code = detector.initialize(opt.model_path, err);
@@ -166,17 +187,34 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
     }
     std::vector<std::pair<int, int>> connections{
         // Thumb
-        {0, 1}, {1, 2}, {2, 3}, {3, 4},
+        {0, 1},
+        {1, 2},
+        {2, 3},
+        {3, 4},
         // Index finger
-        {5, 6}, {6, 7}, {7, 8},
+        {5, 6},
+        {6, 7},
+        {7, 8},
         // Middle finger
-        {9, 10}, {10, 11}, {11, 12},
+        {9, 10},
+        {10, 11},
+        {11, 12},
         // Ring finger
-        {13, 14}, {14, 15}, {15, 16},
+        {13, 14},
+        {14, 15},
+        {15, 16},
         // Pinky finger
-        {17, 18}, {18, 19}, {19, 20},
+        {17, 18},
+        {18, 19},
+        {19, 20},
         // Palm (connect the bases of the fingers)
-        {0, 5}, {5, 9}, {9, 13}, {13, 17}, {0, 17}};
+        {0, 5},
+        {5, 9},
+        {9, 13},
+        {13, 17},
+        {0, 17}};
+
+    cvtool::core::gesture::GestureStabilizer stabilizer{opt.stable_frames, opt.cooldown_ms};
 
     while (true)
     {
@@ -199,7 +237,7 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             }
             if (window_initialized)
             {
-                if (cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE) < 1.0 || 
+                if (cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE) < 1.0 ||
                     cv::getWindowProperty(gesture_winname, cv::WND_PROP_VISIBLE) < 1.0)
                 {
                     fmt::println("Window closed by user during camera failure");
@@ -260,29 +298,41 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         if (opt.roi.empty() || !safe_roi.empty())
         {
             result = detector.detect(frame, safe_roi);
-        }  
+        }
 
         std::string debug_fingers_str = "None";
-        if (result.has_hand)
+        cvtool::core::gesture::ClassifierResult raw_gesture;
+        cvtool::core::gesture::StabilizerResult stab_res;
+        if (cvtool::core::gesture::can_classify_hand(result))
         {
-            current_gesture = cvtool::core::gesture::classify_hand_gesture(result);
+            raw_gesture = cvtool::core::gesture::classify_hand_gesture(result);
+
+            stab_res = stabilizer.update(raw_gesture.gesture,
+                                         std::chrono::steady_clock::now());
+
+            display_gesture = stab_res.stable_gesture;
+
             draw_hand_landmarks(display_frame, result, connections);
-            
-            auto state = cvtool::core::gesture::extract_finger_state(result);
-            
-            debug_fingers_str = fmt::format("T={} I={} M={} R={} P={}",
-                state.thumb_extended ? 1 : 0, 
-                state.index_extended ? 1 : 0, 
-                state.middle_extended ? 1 : 0, 
-                state.ring_extended ? 1 : 0, 
-                state.pinky_extended ? 1 : 0);
+
+            debug_fingers_str = fmt::format(
+                "T={} I={} M={} R={} P={}",
+                raw_gesture.state.thumb_extended ? 1 : 0,
+                raw_gesture.state.index_extended ? 1 : 0,
+                raw_gesture.state.middle_extended ? 1 : 0,
+                raw_gesture.state.ring_extended ? 1 : 0,
+                raw_gesture.state.pinky_extended ? 1 : 0);
         }
         else
         {
-            current_gesture = cvtool::core::gesture::GestureID::None;
+            raw_gesture.gesture = cvtool::core::gesture::GestureID::None;
+    
+            stab_res = stabilizer.update(cvtool::core::gesture::GestureID::None,
+                                         std::chrono::steady_clock::now());
+
+            display_gesture = stab_res.stable_gesture;
         }
 
-        const cv::Mat &raw_img = cvtool::core::gesture::get_gesture_image(bank, current_gesture);
+        const cv::Mat &raw_img = cvtool::core::gesture::get_gesture_image(bank, display_gesture);
         const int gesture_w = 256;
         const int gesture_h = 200;
         cv::Mat display_image = cvtool::core::gesture::letterbox(raw_img, gesture_w, gesture_h);
@@ -292,7 +342,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             render_debug_overlay(
                 opt, display_frame.cols, display_frame.rows,
                 display_frame, safe_roi,
-                current_gesture,
+                raw_gesture.gesture,
+                stab_res,
                 result.confidence,
                 debug_fingers_str);
         }
@@ -300,11 +351,15 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         cv::imshow(winname, display_frame);
         cv::imshow(gesture_winname, display_image);
 
-        int key{cv::waitKey(30)};
+        int key{cv::waitKey(5)};
         if (key == 27 || key == 'q' || key == 'Q')
         {
             fmt::println("Stop key pressed by user");
             break;
+        }
+        else if (key == 'r' || key == 'R')
+        {
+            stabilizer.reset();
         }
 
         if (cv::getWindowProperty(winname, cv::WND_PROP_VISIBLE) < 1.0 ||

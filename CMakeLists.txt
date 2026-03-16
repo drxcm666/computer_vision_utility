@@ -47,6 +47,7 @@ add_executable(cvtool
     src/core/gesture/gesture_domain.cpp
     src/core/gesture/hand_landmark_detector.cpp
     src/core/gesture/gesture_rules.cpp
+    src/core/gesture/gesture_stabilizer.cpp
 )
 
 # Link libraries
