@@ -6,6 +6,8 @@
 #include "cvtool/core/gesture/hand_landmark_detector.hpp"
 #include "cvtool/core/gesture/gesture_rules.hpp"
 #include "cvtool/core/gesture/gesture_stabilizer.hpp"
+#include "cvtool/core/gesture/face_landmark_detector.hpp"
+#include "cvtool/core/gesture/contextual_gesture_rules.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
@@ -22,7 +24,8 @@ static void render_debug_overlay(
     int w, int h, cv::Mat &frame,
     cv::Rect sr, cvtool::core::gesture::GestureID raw_id,
     cvtool::core::gesture::StabilizerResult &stab_res,
-    float confidence, std::string fingers_str)
+    float confidence, std::string fingers_str,
+    const cvtool::core::gesture::FaceLandmarkResult &face_result)
 {
     int x{10};
     int y{30};
@@ -69,9 +72,9 @@ static void render_debug_overlay(
                 cv::LINE_AA);
 
     cv::putText(frame,
-                fmt::format("candidate: {} ({}/5)",
-                            cvtool::core::gesture::to_debug_label(stab_res.candidate_gesture),
-                            stab_res.candidate_count),
+                fmt::format("candidate: {} ({}/{})",
+                    cvtool::core::gesture::to_debug_label(stab_res.candidate_gesture),
+                    stab_res.candidate_count, opt.stable_frames),
                 cv::Point(x, y + line_height * 6),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
@@ -85,6 +88,12 @@ static void render_debug_overlay(
     cv::putText(frame,
                 fmt::format("fingers: {}", fingers_str),
                 cv::Point(x, y + line_height * 8),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
+                cv::LINE_AA);
+
+    cv::putText(frame,
+                fmt::format("face confidence: {}", face_result.confidence),
+                cv::Point(x, y + line_height * 9),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 }
@@ -178,8 +187,8 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
 
     auto display_gesture{cvtool::core::gesture::GestureID::None};
 
-    cvtool::core::gesture::HandLandmarkDetector detector;
-    auto det_code = detector.initialize(opt.model_path, err);
+    cvtool::core::gesture::HandLandmarkDetector hand_detector;
+    auto det_code = hand_detector.initialize(opt.hand_model_path, err);
     if (det_code != cvtool::core::ExitCode::Ok)
     {
         fmt::println(stderr, "{}", err);
@@ -215,6 +224,18 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         {0, 17}};
 
     cvtool::core::gesture::GestureStabilizer stabilizer{opt.stable_frames, opt.cooldown_ms};
+
+    cvtool::core::gesture::FaceLandmarkDetector face_detector;
+    if (!opt.face_model_path.empty())
+    {
+        auto face_code = face_detector.initialize(opt.face_model_path, err);
+        if (face_code != cvtool::core::ExitCode::Ok)
+        {
+            fmt::println(stderr, "{}", err);
+            return face_code;
+        }
+    }
+    
 
     while (true)
     {
@@ -294,33 +315,46 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             }
         }
 
-        cvtool::core::gesture::HandLandmarkResult result;
+        cvtool::core::gesture::HandLandmarkResult hand_result;
         if (opt.roi.empty() || !safe_roi.empty())
-        {
-            result = detector.detect(frame, safe_roi);
-        }
+            hand_result = hand_detector.detect(frame, safe_roi);
+
+        cvtool::core::gesture::FaceLandmarkResult face_result;
+        if (opt.enable_contextual_gestures)
+            face_result = face_detector.detect(frame, safe_roi);
+
 
         std::string debug_fingers_str = "None";
         cvtool::core::gesture::ClassifierResult raw_gesture;
         cvtool::core::gesture::StabilizerResult stab_res;
-        if (cvtool::core::gesture::can_classify_hand(result))
+        if (cvtool::core::gesture::can_classify_hand(hand_result))
         {
-            raw_gesture = cvtool::core::gesture::classify_hand_gesture(result);
+            raw_gesture = cvtool::core::gesture::classify_hand_gesture(hand_result);
+
+            if (opt.enable_contextual_gestures)
+            {
+                auto ctx_gesture = cvtool::core::gesture::classify_contextual_gesture(
+                    hand_result, face_result);
+                
+                if (ctx_gesture != cvtool::core::gesture::GestureID::None &&
+                    ctx_gesture != cvtool::core::gesture::GestureID::Unknown)
+                {
+                    raw_gesture.gesture = ctx_gesture;
+                }
+            }
 
             stab_res = stabilizer.update(raw_gesture.gesture,
-                                         std::chrono::steady_clock::now());
-
+                                            std::chrono::steady_clock::now());
             display_gesture = stab_res.stable_gesture;
-
-            draw_hand_landmarks(display_frame, result, connections);
+            draw_hand_landmarks(display_frame, hand_result, connections);
 
             debug_fingers_str = fmt::format(
                 "T={} I={} M={} R={} P={}",
-                raw_gesture.state.thumb_extended ? 1 : 0,
-                raw_gesture.state.index_extended ? 1 : 0,
-                raw_gesture.state.middle_extended ? 1 : 0,
-                raw_gesture.state.ring_extended ? 1 : 0,
-                raw_gesture.state.pinky_extended ? 1 : 0);
+            raw_gesture.state.thumb_extended ? 1 : 0,
+            raw_gesture.state.index_extended ? 1 : 0,
+            raw_gesture.state.middle_extended ? 1 : 0,
+            raw_gesture.state.ring_extended ? 1 : 0,
+            raw_gesture.state.pinky_extended ? 1 : 0);
         }
         else
         {
@@ -344,8 +378,19 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
                 display_frame, safe_roi,
                 raw_gesture.gesture,
                 stab_res,
-                result.confidence,
-                debug_fingers_str);
+                hand_result.confidence,
+                debug_fingers_str,
+                face_result);
+
+            if (face_result.has_face)
+            {
+                cv::rectangle(
+                    display_frame, face_result.bbox, 
+                    cv::Scalar(0, 0, 255), 1, 8, 0);
+                cv::circle(
+                    display_frame, face_result.mouth_center, 10, 
+                    cv::Scalar(0, 255, 255), 1, 8, 0);
+            }
         }
 
         cv::imshow(winname, display_frame);

@@ -17,6 +17,8 @@ std::string_view to_asset_key(GestureID id)
         return "peace";
     case GestureID::ThumbsUp:
         return "thumbs_up";
+    case GestureID::Monkey:
+        return "monkey";
     default:
         return "unknown";
     }
@@ -36,6 +38,8 @@ std::string_view to_debug_label(GestureID id)
         return "Peace (Detected)";
     case GestureID::ThumbsUp:
         return "Thumbs Up (Detected)";
+    case GestureID::Monkey:
+        return "Monkey (Detected)";
     default:
         return "Unknown Gesture - Fallback";
     }

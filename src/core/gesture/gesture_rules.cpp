@@ -7,33 +7,35 @@
 namespace cvtool::core::gesture
 {
 
-enum HandLandmarkIndex
-{
-    Wrist,
-    ThumbCmc, ThumbMcp, ThumbIp, ThumbTip,
-    IndexMcp, IndexPip, IndexDip, IndexTip,
-    MiddleMcp, MiddlePip, MiddleDip, MiddleTip,
-    RingMcp, RingPip, RingDip, RingTip,
-    PinkyMcp, PinkyPip, PinkyDip, PinkyTip
-};
+// enum HandLandmarkIndex
+// {
+//     Wrist,
+//     ThumbCmc, ThumbMcp, ThumbIp, ThumbTip,
+//     IndexMcp, IndexPip, IndexDip, IndexTip,
+//     MiddleMcp, MiddlePip, MiddleDip, MiddleTip,
+//     RingMcp, RingPip, RingDip, RingTip,
+//     PinkyMcp, PinkyPip, PinkyDip, PinkyTip
+// };
 
 constexpr float min_finger_extension_ratio{0.8f};
 constexpr float min_thumb_extension_ratio{0.5f};
 constexpr float min_thumb_separation_ratio{0.5f};
 constexpr float min_palm_scale{5.0f};
 
-static float distance(const cv::Point2f &point1, const cv::Point2f &point2)
+float distance(const cv::Point2f &point1, const cv::Point2f &point2)
 {
-    return std::sqrt(std::pow(point1.x - point2.x, 2) + std::pow(point1.y - point2.y, 2));
+    float dx = point1.x - point2.x, dy = point1.y - point2.y;
+    return std::sqrt(dx * dx + dy * dy);
 }
 
-static float compute_palm_scale(const cvtool::core::gesture::HandLandmarkResult &data)
+float compute_palm_scale(const cvtool::core::gesture::HandLandmarkResult &data)
 {
     return distance(data.points[Wrist], data.points[MiddleMcp]);
 }
 
 static bool is_non_thumb_extended(
-    const cv::Point2f &mcp, const cv::Point2f &pip, const cv::Point2f &dip, const cv::Point2f &tip, float palm_scale)
+    const cv::Point2f &mcp, const cv::Point2f &pip, 
+    const cv::Point2f &dip, const cv::Point2f &tip, float palm_scale)
 {
     if ((tip.y < dip.y && dip.y < pip.y && pip.y < mcp.y) &&
         (distance(tip, mcp) / palm_scale > min_finger_extension_ratio))
@@ -43,7 +45,8 @@ static bool is_non_thumb_extended(
 }
 
 static bool is_thumb_extended(
-    const cv::Point2f &indexMcp, const cv::Point2f &thumbMcp, const cv::Point2f &thumbTip, float palm_scale)
+    const cv::Point2f &indexMcp, const cv::Point2f &thumbMcp, 
+    const cv::Point2f &thumbTip, float palm_scale)
 {
     if ((distance(thumbMcp, thumbTip) / palm_scale > min_thumb_extension_ratio) &&
         distance(thumbTip, indexMcp) / palm_scale > min_thumb_separation_ratio)
@@ -67,19 +70,24 @@ FingerState extract_finger_state(const cvtool::core::gesture::HandLandmarkResult
     float palm_scale = compute_palm_scale(data);
 
     state.thumb_extended = is_thumb_extended(
-        data.points[IndexMcp], data.points[ThumbMcp], data.points[ThumbTip], palm_scale);
+        data.points[IndexMcp], data.points[ThumbMcp], 
+        data.points[ThumbTip], palm_scale);
 
     state.index_extended = is_non_thumb_extended(
-        data.points[IndexMcp], data.points[IndexPip], data.points[IndexDip], data.points[IndexTip], palm_scale);
+        data.points[IndexMcp], data.points[IndexPip], 
+        data.points[IndexDip], data.points[IndexTip], palm_scale);
 
     state.middle_extended = is_non_thumb_extended(
-        data.points[MiddleMcp], data.points[MiddlePip], data.points[MiddleDip], data.points[MiddleTip], palm_scale);
+        data.points[MiddleMcp], data.points[MiddlePip], 
+        data.points[MiddleDip], data.points[MiddleTip], palm_scale);
 
     state.ring_extended = is_non_thumb_extended(
-        data.points[RingMcp], data.points[RingPip], data.points[RingDip], data.points[RingTip], palm_scale);
+        data.points[RingMcp], data.points[RingPip], 
+        data.points[RingDip], data.points[RingTip], palm_scale);
 
     state.pinky_extended = is_non_thumb_extended(
-        data.points[PinkyMcp], data.points[PinkyPip], data.points[PinkyDip], data.points[PinkyTip], palm_scale);
+        data.points[PinkyMcp], data.points[PinkyPip], 
+        data.points[PinkyDip], data.points[PinkyTip], palm_scale);
 
     return state;
 }

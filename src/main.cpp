@@ -171,7 +171,8 @@ int main(int argc, char **argv)
          ->required()->check(CLI::ExistingFile);
     match->add_option("--min-score", mapt.min_score, "Minimal confidence [0...1]")
          ->default_val(0.80);
-    match->add_option("--method", mapt.method, "Matching method: ccoeff_normed|ccorr_normed|sqdiff_normed")
+    match->add_option("--method", mapt.method, 
+        "Matching method: ccoeff_normed|ccorr_normed|sqdiff_normed")
          ->default_val("ccoeff_normed");
     match->add_option("--max-results", mapt.max_results, "How many matches to draw (>= 1)")
          ->default_val(5);
@@ -226,14 +227,20 @@ int main(int argc, char **argv)
     gesture_show->add_flag("--mirror", gsop.mirror, "Mirror camera, (default: false)");
     gesture_show->add_option("--roi", gsop.roi, "Region of interest: x,y,w,h");
     gesture_show->add_flag("--show-debug", gsop.show_debug, "Display debug overlays");
-    gesture_show->add_option("--model", gsop.model_path, "The path to a hand recognition model")
+    gesture_show->add_option("--model", gsop.hand_model_path, "The path to a hand recognition model")
                 ->required()->check(CLI::ExistingFile);
-    gesture_show->add_option("--stable_frames", gsop.stable_frames, 
+    gesture_show->add_option("--stable-frames", gsop.stable_frames, 
                 "How many consecutive frames the same gesture must appear to be considered stable")
                 ->check(CLI::Range(1, 100));
-    gesture_show->add_option("--cooldown_ms", gsop.cooldown_ms, 
+    gesture_show->add_option("--cooldown-ms", gsop.cooldown_ms, 
                 "Cooldown in milliseconds after a stable gesture change")
                 ->check(CLI::NonNegativeNumber);
+    gesture_show->add_option("--face-model", gsop.face_model_path, "Path to a face detection model")
+                ->check(CLI::ExistingFile);
+    gesture_show->add_option("--face-conf", gsop.face_min_confidence, "Minimum face detection confidence")
+                ->check(CLI::Range(0.0, 1.0));
+    gesture_show->add_flag("--contextual-gestures", gsop.enable_contextual_gestures, 
+                "Enable contextual gesture filtering (requires face detection)");
 
     cvtool::core::ExitCode rc{0};
 

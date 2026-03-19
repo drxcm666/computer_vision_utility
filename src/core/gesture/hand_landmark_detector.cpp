@@ -58,10 +58,8 @@ cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::decode_output(
 
     if (lefthand_righthand[0] <= 0.5f)
         result.hand = Handedness::Left;
-    else if (lefthand_righthand[0] > 0.5f)
-        result.hand = Handedness::Right;
     else
-        result.hand = Handedness::None;
+        result.hand = Handedness::Right;
 
     for (int i = 0; i < 21; i++)
     {
@@ -81,7 +79,8 @@ cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::decode_output(
     return result;
 }
 
-cvtool::core::ExitCode HandLandmarkDetector::initialize(const std::string &model_path, std::string &err)
+cvtool::core::ExitCode HandLandmarkDetector::initialize(
+    const std::string &model_path, std::string &err)
 {
     env_ = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_FATAL, "Default");
 
@@ -109,7 +108,7 @@ cvtool::core::ExitCode HandLandmarkDetector::initialize(const std::string &model
         return cvtool::core::ExitCode::InputNotFoundOrNoAccess;
     }
 
-    session_option_.SetIntraOpNumThreads(4);
+    session_option_.SetIntraOpNumThreads(2);
     session_option_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     session_option_.SetLogSeverityLevel(ORT_LOGGING_LEVEL_FATAL);
     session_option_.DisableProfiling();
@@ -134,10 +133,10 @@ cvtool::core::ExitCode HandLandmarkDetector::initialize(const std::string &model
 cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::detect(
     const cv::Mat &frame, const cv::Rect &roi)
 {
+    HandLandmarkResult result{};
+
     if (initialized_ == false)
-    {
-        return cvtool::core::gesture::HandLandmarkResult{};
-    }
+        return result;
 
     cv::Mat new_frame = roi.empty() ? frame : frame(roi);
 
@@ -158,12 +157,12 @@ cvtool::core::gesture::HandLandmarkResult HandLandmarkDetector::detect(
     catch(const Ort::Exception &e)
     {
         last_error_ = e.what();
-        return cvtool::core::gesture::HandLandmarkResult{};
+        return result;
     }
     catch(const std::exception &e)
     {
         last_error_ = e.what();
-        return cvtool::core::gesture::HandLandmarkResult{};
+        return result;
     }
 }
 

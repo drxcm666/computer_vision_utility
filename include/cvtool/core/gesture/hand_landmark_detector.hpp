@@ -26,8 +26,8 @@ namespace cvtool::core::gesture
         int input_width_{224};
         int input_height_{224};
         std::array<int64_t, 4> input_shape_{1, 3, 224, 224};
-        std::array<const char *, 1> input_names_{"input"};
-        std::array<const char *, 3> output_names_{"xyz_x21", "hand_score", "lefthand_0_or_righthand_1"};
+        std::array<const char*, 1> input_names_{"input"};
+        std::array<const char*, 3> output_names_{"xyz_x21", "hand_score", "lefthand_0_or_righthand_1"};
 
         cv::Mat preprocess_image(const cv::Mat &frame);
         Ort::Value create_input_tensor(const cv::Mat &blob);

@@ -13,6 +13,7 @@ enum class GestureID
     Fist,
     Peace,
     ThumbsUp,
+    Monkey,
     Unknown
 };
 

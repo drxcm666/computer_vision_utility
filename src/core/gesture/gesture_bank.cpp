@@ -139,7 +139,7 @@ cvtool::core::ExitCode load_gesture_image_bank(
         warnings.push_back(fmt::format(
             "[gesture_bank] warn: no 'none' image configured, will use default fallback"));
     }
-    else if (out_bank.fallback.empty() && out_bank.images.empty())
+    if (out_bank.fallback.empty())
     {
         warnings.push_back(fmt::format(
             "[gesture_bank] warn: no gesture images loaded at all"));

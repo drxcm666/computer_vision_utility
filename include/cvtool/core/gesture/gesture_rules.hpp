@@ -6,6 +6,16 @@
 namespace cvtool::core::gesture
 {
 
+enum HandLandmarkIndex
+{
+    Wrist,
+    ThumbCmc, ThumbMcp, ThumbIp, ThumbTip,
+    IndexMcp, IndexPip, IndexDip, IndexTip,
+    MiddleMcp, MiddlePip, MiddleDip, MiddleTip,
+    RingMcp, RingPip, RingDip, RingTip,
+    PinkyMcp, PinkyPip, PinkyDip, PinkyTip
+};
+
 struct FingerState
 {
     bool thumb_extended{false};
@@ -23,11 +33,14 @@ struct ClassifierResult
 
 };
 
-FingerState extract_finger_state(const cvtool::core::gesture::HandLandmarkResult &data);
+float distance(const cv::Point2f &point1, const cv::Point2f &point2);
+float compute_palm_scale(const cvtool::core::gesture::HandLandmarkResult &data);
 
-bool can_classify_hand(const cvtool::core::gesture::HandLandmarkResult &data);
+FingerState extract_finger_state(const HandLandmarkResult &data);
 
-cvtool::core::gesture::ClassifierResult classify_hand_gesture(const cvtool::core::gesture::HandLandmarkResult &data);
+bool can_classify_hand(const HandLandmarkResult &data);
+
+ClassifierResult classify_hand_gesture(const HandLandmarkResult &data);
 
 
 
