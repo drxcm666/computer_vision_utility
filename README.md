@@ -1,5 +1,13 @@
 # cvtool
 
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue?logo=cplusplus&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-4-green?logo=opencv&logoColor=white)
+![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-1.19-grey?logo=onnx&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
+![CMake](https://img.shields.io/badge/CMake-3.25+-064F8C?logo=cmake&logoColor=white)
+![vcpkg](https://img.shields.io/badge/vcpkg-enabled-blueviolet)
+![Build System](https://img.shields.io/badge/build-Ninja-orange)
+
 A command-line computer vision utility written in **C++20** with OpenCV, ONNX Runtime, and a modular pipeline architecture.
 
 Supported operations: image/video metadata inspection, grayscale conversion, Gaussian blur, Canny edge detection (images and video), contour detection, multi-scale template matching, and real-time webcam gesture recognition with optional face-context fusion.
