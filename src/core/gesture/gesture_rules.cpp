@@ -7,16 +7,6 @@
 namespace cvtool::core::gesture
 {
 
-// enum HandLandmarkIndex
-// {
-//     Wrist,
-//     ThumbCmc, ThumbMcp, ThumbIp, ThumbTip,
-//     IndexMcp, IndexPip, IndexDip, IndexTip,
-//     MiddleMcp, MiddlePip, MiddleDip, MiddleTip,
-//     RingMcp, RingPip, RingDip, RingTip,
-//     PinkyMcp, PinkyPip, PinkyDip, PinkyTip
-// };
-
 constexpr float min_finger_extension_ratio{0.8f};
 constexpr float min_thumb_extension_ratio{0.5f};
 constexpr float min_thumb_separation_ratio{0.5f};

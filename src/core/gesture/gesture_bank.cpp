@@ -38,7 +38,7 @@ cvtool::core::ExitCode load_gesture_image_bank(
     out_bank.images.clear();
 
     const std::unordered_set<std::string> whitelist{
-        "open_palm", "fist", "peace", "thumbs_up", "none", "unknown"};
+        "open_palm", "fist", "peace", "thumbs_up", "monkey", "none", "unknown"};
 
     std::ifstream file(map_path);
     if (!file)

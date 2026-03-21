@@ -22,6 +22,7 @@ namespace cvtool::core::gesture
         Ort::SessionOptions session_option_;
         std::string last_error_{};
         float min_hand_score_{0.5f}; // hand detection confidence threshold
+        int tight_miss_streak_{0};
 
         int input_width_{224};
         int input_height_{224};

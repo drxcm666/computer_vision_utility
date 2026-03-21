@@ -52,29 +52,29 @@ static void render_debug_overlay(
 
     cv::putText(frame,
                 fmt::format("roi: {}, sr: [x={}, y={}, w={}, h={}]",
-                    !opt.roi.empty(), sr.x, sr.y, sr.width, sr.height),
+                            !opt.roi.empty(), sr.x, sr.y, sr.width, sr.height),
                 cv::Point(x, y + line_height * 3),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 
     cv::putText(frame,
                 fmt::format("stable gesture: {}",
-                    cvtool::core::gesture::to_debug_label(stab_res.stable_gesture)),
+                            cvtool::core::gesture::to_debug_label(stab_res.stable_gesture)),
                 cv::Point(x, y + line_height * 4),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 
     cv::putText(frame,
-                fmt::format("raw gesture : {}", 
-                    cvtool::core::gesture::to_debug_label(raw_id)),
+                fmt::format("raw gesture : {}",
+                            cvtool::core::gesture::to_debug_label(raw_id)),
                 cv::Point(x, y + line_height * 5),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
 
     cv::putText(frame,
                 fmt::format("candidate: {} ({}/{})",
-                    cvtool::core::gesture::to_debug_label(stab_res.candidate_gesture),
-                    stab_res.candidate_count, opt.stable_frames),
+                            cvtool::core::gesture::to_debug_label(stab_res.candidate_gesture),
+                            stab_res.candidate_count, opt.stable_frames),
                 cv::Point(x, y + line_height * 6),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
                 cv::LINE_AA);
@@ -137,6 +137,7 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
     }
     cap.set(cv::CAP_PROP_FPS, 60);
     cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+    cap.set(cv::CAP_PROP_BUFFERSIZE, 1);
 
     int width, height;
     if (!opt.size_str.empty())
@@ -178,12 +179,29 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
 
     cv::Mat frame;
     int read_fail_streak{0};
-    std::string winname = "MyVideo";
-    std::string gesture_winname = "Gesture";
+    std::string winname{"MyVideo"};
+    std::string gesture_winname{"Gesture"};
     cvtool::core::ExitCode exit_code = cvtool::core::ExitCode::Ok;
 
     bool window_initialized{false};
     bool roi_warned{false};
+
+    constexpr int gesture_w = 256;
+    constexpr int gesture_h = 200;
+
+    int frame_index{0};
+    const int hand_infer_interval{2};
+    const int face_infer_interval{4};
+    cvtool::core::gesture::HandLandmarkResult cached_hand_result{};
+    cvtool::core::gesture::FaceLandmarkResult cached_face_result{};
+    cvtool::core::gesture::ClassifierResult cached_raw_gesture{cvtool::core::gesture::GestureID::None};
+
+    cvtool::core::gesture::StabilizerResult cached_stab_res{};
+    std::string cached_debug_fingers_str{"None"};
+
+    cv::Mat cached_display_image; 
+    cvtool::core::gesture::GestureID cached_display_image_gesture{
+        cvtool::core::gesture::GestureID::Unknown};
 
     auto display_gesture{cvtool::core::gesture::GestureID::None};
 
@@ -235,7 +253,6 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
             return face_code;
         }
     }
-    
 
     while (true)
     {
@@ -273,8 +290,6 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         {
             int win_w = frame.cols;
             int win_h = frame.rows;
-            const int gesture_w = 256;
-            const int gesture_h = 200;
 
             cv::namedWindow(winname, cv::WINDOW_NORMAL);
             cv::resizeWindow(winname, win_w, win_h);
@@ -293,17 +308,16 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
         if (opt.mirror)
             cv::flip(frame, frame, 1);
 
-        cv::Mat display_frame = frame.clone();
         cv::Rect safe_roi{0, 0, 0, 0};
+        bool has_valid_roi = !roi_enable;
         if (roi_enable)
         {
-            cv::Rect scene_rect{0, 0, display_frame.cols, display_frame.rows};
+            cv::Rect scene_rect{0, 0, frame.cols, frame.rows};
             safe_roi = scene_rect & roi;
             if (!safe_roi.empty())
             {
                 roi_warned = false;
-
-                cv::rectangle(display_frame, safe_roi, cv::Scalar(0, 255, 0), 2);
+                has_valid_roi = true;
             }
             else if (!roi_warned)
             {
@@ -312,89 +326,142 @@ cvtool::core::ExitCode run_gesture_show(const cvtool::cmd::GestureShowOptions &o
                              roi.x, roi.y, roi.width, roi.height);
 
                 roi_warned = true;
+                has_valid_roi = false;
             }
         }
 
-        cvtool::core::gesture::HandLandmarkResult hand_result;
-        if (opt.roi.empty() || !safe_roi.empty())
-            hand_result = hand_detector.detect(frame, safe_roi);
+        frame_index++;
+        const bool run_hand_now{
+            has_valid_roi &&
+            (((frame_index % hand_infer_interval) == 1) || !cached_hand_result.has_hand)};
 
-        cvtool::core::gesture::FaceLandmarkResult face_result;
-        if (opt.enable_contextual_gestures)
-            face_result = face_detector.detect(frame, safe_roi);
+        const bool run_face_now{
+            has_valid_roi &&
+            (((frame_index % face_infer_interval) == 1) || !cached_face_result.has_face)};
 
-
-        std::string debug_fingers_str = "None";
-        cvtool::core::gesture::ClassifierResult raw_gesture;
-        cvtool::core::gesture::StabilizerResult stab_res;
-        if (cvtool::core::gesture::can_classify_hand(hand_result))
+        bool hand_updated_this_frame{false};
+        if (has_valid_roi)
         {
-            raw_gesture = cvtool::core::gesture::classify_hand_gesture(hand_result);
+            if (run_hand_now)
+            {
+                cached_hand_result = hand_detector.detect(frame, safe_roi);
+                hand_updated_this_frame = true;
+            }
 
             if (opt.enable_contextual_gestures)
             {
-                auto ctx_gesture = cvtool::core::gesture::classify_contextual_gesture(
-                    hand_result, face_result);
-                
-                if (ctx_gesture != cvtool::core::gesture::GestureID::None &&
-                    ctx_gesture != cvtool::core::gesture::GestureID::Unknown)
-                {
-                    raw_gesture.gesture = ctx_gesture;
-                }
+                if (run_face_now)
+                    cached_face_result = face_detector.detect(frame, safe_roi);
             }
-
-            stab_res = stabilizer.update(raw_gesture.gesture,
-                                            std::chrono::steady_clock::now());
-            display_gesture = stab_res.stable_gesture;
-            draw_hand_landmarks(display_frame, hand_result, connections);
-
-            debug_fingers_str = fmt::format(
-                "T={} I={} M={} R={} P={}",
-            raw_gesture.state.thumb_extended ? 1 : 0,
-            raw_gesture.state.index_extended ? 1 : 0,
-            raw_gesture.state.middle_extended ? 1 : 0,
-            raw_gesture.state.ring_extended ? 1 : 0,
-            raw_gesture.state.pinky_extended ? 1 : 0);
+            else
+                cached_face_result = {};
         }
         else
         {
-            raw_gesture.gesture = cvtool::core::gesture::GestureID::None;
-    
-            stab_res = stabilizer.update(cvtool::core::gesture::GestureID::None,
-                                         std::chrono::steady_clock::now());
-
-            display_gesture = stab_res.stable_gesture;
+            cached_hand_result = {};
+            cached_face_result = {};
         }
 
-        const cv::Mat &raw_img = cvtool::core::gesture::get_gesture_image(bank, display_gesture);
-        const int gesture_w = 256;
-        const int gesture_h = 200;
-        cv::Mat display_image = cvtool::core::gesture::letterbox(raw_img, gesture_w, gesture_h);
+        if (hand_updated_this_frame)
+        {
+            if (cvtool::core::gesture::can_classify_hand(cached_hand_result))
+            {
+                cached_raw_gesture =
+                    cvtool::core::gesture::classify_hand_gesture(cached_hand_result);
+
+                if (opt.enable_contextual_gestures)
+                {
+                    auto ctx_gesture = cvtool::core::gesture::classify_contextual_gesture(
+                        cached_hand_result, cached_face_result);
+
+                    if (ctx_gesture != cvtool::core::gesture::GestureID::None &&
+                        ctx_gesture != cvtool::core::gesture::GestureID::Unknown &&
+                        (cached_raw_gesture.gesture == cvtool::core::gesture::GestureID::Unknown ||
+                         cached_raw_gesture.gesture == cvtool::core::gesture::GestureID::Fist))
+                    {
+                        cached_raw_gesture.gesture = ctx_gesture;
+                    }
+                }
+
+                cached_stab_res = stabilizer.update(cached_raw_gesture.gesture,
+                                                    std::chrono::steady_clock::now());
+
+                cached_debug_fingers_str = fmt::format(
+                    "T={} I={} M={} R={} P={}",
+                    cached_raw_gesture.state.thumb_extended ? 1 : 0,
+                    cached_raw_gesture.state.index_extended ? 1 : 0,
+                    cached_raw_gesture.state.middle_extended ? 1 : 0,
+                    cached_raw_gesture.state.ring_extended ? 1 : 0,
+                    cached_raw_gesture.state.pinky_extended ? 1 : 0);
+            }
+            else
+            {
+                cached_raw_gesture = {cvtool::core::gesture::GestureID::None, {}};
+
+                cached_stab_res = stabilizer.update(cvtool::core::gesture::GestureID::None,
+                                                    std::chrono::steady_clock::now());
+
+                cached_debug_fingers_str = "None";
+            }
+        }
+        else if (!has_valid_roi)
+        {
+            cached_raw_gesture = {
+                cvtool::core::gesture::GestureID::None, {}};
+
+            cached_stab_res = stabilizer.update(
+                cvtool::core::gesture::GestureID::None,
+                std::chrono::steady_clock::now());
+
+            cached_debug_fingers_str = "None";
+        }
+
+        display_gesture = cached_stab_res.stable_gesture;
+
+        cv::Mat display_frame = frame;
+
+        if (has_valid_roi && roi_enable)
+            cv::rectangle(display_frame, safe_roi, cv::Scalar(0, 255, 0), 2);
+
+        if (cvtool::core::gesture::can_classify_hand(cached_hand_result))
+            draw_hand_landmarks(display_frame, cached_hand_result, connections);
+
+        if (cached_display_image.empty() ||
+            cached_display_image_gesture != display_gesture)
+        {
+            const cv::Mat &raw_img =
+                cvtool::core::gesture::get_gesture_image(bank, display_gesture);
+
+            cached_display_image =
+                cvtool::core::gesture::letterbox(raw_img, gesture_w, gesture_h);
+
+            cached_display_image_gesture = display_gesture;
+        }
 
         if (opt.show_debug)
         {
             render_debug_overlay(
                 opt, display_frame.cols, display_frame.rows,
                 display_frame, safe_roi,
-                raw_gesture.gesture,
-                stab_res,
-                hand_result.confidence,
-                debug_fingers_str,
-                face_result);
+                cached_raw_gesture.gesture,
+                cached_stab_res,
+                cached_hand_result.confidence,
+                cached_debug_fingers_str,
+                cached_face_result);
 
-            if (face_result.has_face)
+            if (cached_face_result.has_face)
             {
                 cv::rectangle(
-                    display_frame, face_result.bbox, 
+                    display_frame, cached_face_result.bbox,
                     cv::Scalar(0, 0, 255), 1, 8, 0);
                 cv::circle(
-                    display_frame, face_result.mouth_center, 10, 
+                    display_frame, cached_face_result.mouth_center, 10,
                     cv::Scalar(0, 255, 255), 1, 8, 0);
             }
         }
 
         cv::imshow(winname, display_frame);
-        cv::imshow(gesture_winname, display_image);
+        cv::imshow(gesture_winname, cached_display_image);
 
         int key{cv::waitKey(5)};
         if (key == 27 || key == 'q' || key == 'Q')
