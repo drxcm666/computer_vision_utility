@@ -39,14 +39,14 @@ Supported operations: image/video metadata inspection, grayscale conversion, Gau
 
 | Peace ✌️ | Thumbs Up 👍 |
 |:---:|:---:|
-| ![Peace gesture](docs/screenshots/gesture_peace.png) | ![Thumbs Up gesture](docs/screenshots/gesture_thumbs_up.png) |
+| ![Peace gesture](docs/screenshots/gesture_peace.jpg) | ![Thumbs Up gesture](docs/screenshots/gesture_thumbs_up.jpg) |
 | Index + middle extended, others folded | Thumb up, all other fingers closed |
 
 > Screenshots taken with `--show-debug` and `--mirror` flags enabled.
 
 ### Template Matching — Car Detection in a Parking Lot
 
-![Car detection result](docs/screenshots/match_car_parking.png)
+![Car detection result](docs/screenshots/match_car_parking.jpg)
 
 > `cvtool match` found the car on the parking lot image using multi-scale template matching.  
 > Green bounding box with confidence score and scale label.
