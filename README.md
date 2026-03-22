@@ -33,6 +33,45 @@ Supported operations: image/video metadata inspection, grayscale conversion, Gau
 
 ---
 
+## Screenshots
+
+### Gesture Recognition
+
+| Peace ✌️ | Thumbs Up 👍 |
+|:---:|:---:|
+| ![Peace gesture](<img width="853" height="510" alt="image" src="https://github.com/user-attachments/assets/3bf85718-3901-455e-9b02-218dc9ffa15d" />
+) | ![Thumbs Up gesture](<img width="843" height="507" alt="image" src="https://github.com/user-attachments/assets/5a1b07f2-3d18-418d-bf68-a7f660c3ed4c" />
+) |
+| Index + middle extended, others folded | Thumb up, all other fingers closed |
+
+> Screenshots taken with `--show-debug` and `--mirror` flags enabled.
+
+### Template Matching — Car Detection in a Parking Lot
+
+![Car detection result](docs/screenshots/match_car_parking.png)
+
+> `cvtool match` found the car on the parking lot image using multi-scale template matching.  
+> Green bounding box with confidence score and scale label.
+
+```bash
+cvtool match \
+  --in  docs/screenshots/parking_scene.jpg \
+  --out docs/screenshots/match_car_parking.png \
+  --templ docs/screenshots/car_template.jpg \
+  --scales 0.6:1.4:0.05 \
+  --min-score 0.72 \
+  --max-results 1 \
+  --draw bbox+label+score \
+  --heatmap docs/screenshots/match_car_heatmap.png
+```
+
+> **Як додати скріншоти:**
+> 1. Створи папку `docs/screenshots/` в корені проекту
+> 2. Запусти команди вище зі своїми зображеннями
+> 3. Збережи результати за вказаними шляхами — GitHub відрендерить їх автоматично
+
+---
+
 ## Requirements
 
 | Tool / Library | Version |
