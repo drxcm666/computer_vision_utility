@@ -39,9 +39,7 @@ Supported operations: image/video metadata inspection, grayscale conversion, Gau
 
 | Peace ✌️ | Thumbs Up 👍 |
 |:---:|:---:|
-| ![Peace gesture](<img width="853" height="510" alt="image" src="https://github.com/user-attachments/assets/3bf85718-3901-455e-9b02-218dc9ffa15d" />
-) | ![Thumbs Up gesture](<img width="843" height="507" alt="image" src="https://github.com/user-attachments/assets/5a1b07f2-3d18-418d-bf68-a7f660c3ed4c" />
-) |
+| ![Peace gesture](<img width="853" height="510" alt="image" src="https://github.com/user-attachments/assets/3bf85718-3901-455e-9b02-218dc9ffa15d" />) | ![Thumbs Up gesture](<img width="843" height="507" alt="image" src="https://github.com/user-attachments/assets/5a1b07f2-3d18-418d-bf68-a7f660c3ed4c" />) |
 | Index + middle extended, others folded | Thumb up, all other fingers closed |
 
 > Screenshots taken with `--show-debug` and `--mirror` flags enabled.
