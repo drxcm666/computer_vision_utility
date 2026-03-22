@@ -63,13 +63,6 @@ cvtool match \
   --heatmap docs/screenshots/match_car_heatmap.png
 ```
 
-> **Як додати скріншоти:**
-> 1. Створи папку `docs/screenshots/` в корені проекту
-> 2. Запусти команди вище зі своїми зображеннями
-> 3. Збережи результати за вказаними шляхами — GitHub відрендерить їх автоматично
-
----
-
 ## Requirements
 
 | Tool / Library | Version |
